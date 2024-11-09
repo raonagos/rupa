@@ -13,3 +13,9 @@
 
 **Rūpa** is inspired by **wg-easy**, which is a simple way to manage WireGuard servers. Rūpa builds on this idea to make things even easier with a modern interface and more features.
 
+## License
+
+This project is licensed under the [Apache License 2.0](./LICENSE). 
+
+- You are free to fork, modify, and use the project, even commercially.
+- However, the project name "Rūpa" is a trademark of [Rao Nagos](https://www.rao-nagos.pf/) and cannot be used without explicit permission.
