@@ -1,5 +1,7 @@
 pub mod app;
-pub mod error_template;
+mod components;
+mod errors;
+mod pages;
 
 #[cfg(feature = "web")]
 #[wasm_bindgen::prelude::wasm_bindgen]

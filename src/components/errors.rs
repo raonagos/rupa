@@ -1,20 +1,5 @@
-use http::status::StatusCode;
 use leptos::prelude::*;
-use thiserror::Error;
-
-#[derive(Clone, Debug, Error)]
-pub enum AppError {
-    #[error("Not Found")]
-    NotFound,
-}
-
-impl AppError {
-    pub fn status_code(&self) -> StatusCode {
-        match self {
-            AppError::NotFound => StatusCode::NOT_FOUND,
-        }
-    }
-}
+use crate::errors::AppError;
 
 // A basic function to display errors served by the error boundaries.
 // Feel free to do more complicated things here than just displaying the error.
@@ -52,16 +37,16 @@ pub fn ErrorTemplate(
     }
 
     view! {
-        <h1>{if errors.len() > 1 {"Errors"} else {"Error"}}</h1>
+        <h1>{if errors.len() > 1 { "Errors" } else { "Error" }}</h1>
         <For
             // a function that returns the items we're iterating over; a signal is fine
-            each= move || {errors.clone().into_iter().enumerate()}
+            each=move || { errors.clone().into_iter().enumerate() }
             // a unique key for each item as a reference
             key=|(index, _error)| *index
             // renders each item to a view
             children=move |error| {
                 let error_string = error.1.to_string();
-                let error_code= error.1.status_code();
+                let error_code = error.1.status_code();
                 view! {
                     <h2>{error_code.to_string()}</h2>
                     <p>"Error: " {error_string}</p>
