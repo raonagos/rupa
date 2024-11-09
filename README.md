@@ -1,78 +1,21 @@
-<picture>
-    <source srcset="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_Solid_White.svg" media="(prefers-color-scheme: dark)">
-    <img src="https://raw.githubusercontent.com/leptos-rs/leptos/main/docs/logos/Leptos_logo_RGB.svg" alt="Leptos Logo">
-</picture>
+# Rūpa the guardian
 
-# Leptos Axum Starter Template
+**Rūpa** is a tool for managing WireGuard VPNs. It aims to make managing VPNs simple and user-friendly. The project includes :
 
-This is a template for use with the [Leptos](https://github.com/leptos-rs/leptos) web framework and the [cargo-leptos](https://github.com/akesson/cargo-leptos) tool using [Axum](https://github.com/tokio-rs/axum).
+- a modern web app that makes it easy to manage VPN users
+- a server program that handles WireGuard tasks
+- desktop and mobile apps that let users connect using an username and password instead of complicated QR codes
+- a way to update user settings in the web app without asking users to manually change their configurations.
 
-## Creating your template repo
+**Rūpa** makes managing and using VPNs easy and clear, even for those who aren’t tech experts.
 
-If you don't have `cargo-leptos` installed you can install it with
+## Inspiration
 
-```bash
-cargo install cargo-leptos --locked
-```
+**Rūpa** is inspired by **wg-easy**, which is a simple way to manage WireGuard servers. Rūpa builds on this idea to make things even easier with a modern interface and more features.
 
-Then run
-```bash
-cargo leptos new --name <name> --git tetuaoro/start-axum
-```
+## License
 
-to generate a new project template.
+This project is licensed under the [Apache License 2.0](./LICENSE). 
 
-```bash
-cd <name>
-```
-
-to go to your newly created project.  
-Feel free to explore the project structure, but the best place to start with your application code is in `src/app.rs`.
-Addtionally, Cargo.toml may need updating as new versions of the dependencies are released, especially if things are not working after a `cargo update`.
-
-## Running your project
-
-```bash
-cargo leptos watch
-```
-
-## Installing Additional Tools
-
-By default, `cargo-leptos` uses `nightly` Rust, `cargo-generate`, and `sass`. If you run into any trouble, you may need to install one or more of these tools.
-
-1. `rustup toolchain install nightly --allow-downgrade` - make sure you have Rust nightly
-2. `rustup target add wasm32-unknown-unknown` - add the ability to compile Rust to WebAssembly
-3. `cargo install cargo-generate` - install `cargo-generate` binary (should be installed automatically in future)
-4. `npm install -g sass` - install `dart-sass` (should be optional in future
-
-## Compiling for Release
-```bash
-cargo leptos build --release
-```
-
-Will generate your server binary in target/server/release and your site package in target/site
-
-## Executing a Server on a Remote Machine Without the Toolchain
-After running a `cargo leptos build --release` the minimum files needed are:
-
-1. The server binary located in `target/server/release`
-2. The `site` directory and all files within located in `target/site`
-
-Copy these files to your remote server. The directory structure should be:
-```text
-<name>
-site/
-```
-Set the following environment variables (updating for your project as needed):
-```text
-LEPTOS_OUTPUT_NAME="<name>"
-LEPTOS_SITE_ROOT="site"
-LEPTOS_SITE_PKG_DIR="pkg"
-LEPTOS_SITE_ADDR="127.0.0.1:3000"
-LEPTOS_RELOAD_PORT="3001"
-```
-Finally, run the server binary.
-
-## Licensing
-
-This template itself is released under the Unlicense. You should replace the LICENSE for your own application with an appropriate license if you plan to release it publicly.
+- You are free to fork, modify, and use the project, even commercially.
+- However, the project name "Rūpa" is a trademark of [Rao Nagos](https://www.rao-nagos.pf/) and cannot be used without explicit permission.
