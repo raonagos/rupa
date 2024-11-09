@@ -1,6 +1,6 @@
-use crate::components::errors::ErrorTemplate;
+use crate::components::error::ErrorTemplate;
 use crate::components::navigation::Navigation;
-use crate::errors::AppError;
+use crate::error::AppError;
 use crate::pages::*;
 use leptos::prelude::*;
 use leptos_meta::*;

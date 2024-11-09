@@ -1,6 +1,6 @@
 pub mod app;
 mod components;
-mod errors;
+mod error;
 mod pages;
 
 #[cfg(feature = "web")]

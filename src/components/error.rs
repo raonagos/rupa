@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use crate::errors::AppError;
+use crate::error::AppError;
 
 // A basic function to display errors served by the error boundaries.
 // Feel free to do more complicated things here than just displaying the error.
