@@ -21,22 +21,17 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Title text="Rupā"/>
-        <Stylesheet id="leptos" href="/pkg/rupa.css"/>
 
         <Router>
             <header>
                 <Navigation/>
             </header>
-            <div class="container">
-                <main>
-                    <Routes fallback=fallback_error>
-                        <Route path=path!("") view=DashboardPage/>
-                    </Routes>
-                </main>
-                <footer>
-                    <p>"footer"</p>
-                </footer>
-            </div>
+            <main>
+                <Routes fallback=fallback_error>
+                    <Route path=path!("") view=DashboardPage/>
+                    <Route path=path!("login") view=LoginPage/>
+                </Routes>
+            </main>
         </Router>
     }
 }

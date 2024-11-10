@@ -3,6 +3,7 @@
 async fn main() {
     use axum::Router;
     use leptos::prelude::*;
+    use leptos::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use rupa::app::*;
 
@@ -21,8 +22,7 @@ async fn main() {
         .with_state(leptos_options);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    let message = format!("listening on http://{}", &addr);
-    logging::console_log(&message);
+    logging::log!("listening on http://{}", &addr);
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
@@ -35,14 +35,15 @@ fn shell(options: leptos::prelude::LeptosOptions) -> impl leptos::prelude::IntoV
     use rupa::app::*;
 
     view! {
-        <!DOCTYPE html> 
+        <!DOCTYPE html>
         <html lang="en">
             <head>
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <AutoReload options=options.clone()/>
-                <HydrationScripts options/>
+                <HydrationScripts options=options.clone()/>
                 <MetaTags/>
+                <HashedStylesheet options id="leptos"/>
             </head>
             <body>
                 <App/>

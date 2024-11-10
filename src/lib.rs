@@ -1,4 +1,5 @@
 pub mod app;
+mod api;
 mod components;
 mod error;
 mod pages;

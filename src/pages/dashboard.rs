@@ -5,6 +5,7 @@ use leptos::prelude::*;
 pub fn DashboardPage() -> impl IntoView {
     view! {
         <section class="container">
+            <h1>"Dashboard"</h1>
             <div>
                 <div>
                     <Interface/>
