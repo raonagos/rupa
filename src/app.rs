@@ -1,9 +1,13 @@
-use crate::error_template::{AppError, ErrorTemplate};
+use crate::components::error::ErrorTemplate;
+use crate::components::navigation::Navigation;
+use crate::error::AppError;
+use crate::pages::*;
 use leptos::prelude::*;
 use leptos_meta::*;
 use leptos_router::components::*;
 use leptos_router::*;
 
+/// Entry component to manage the VPN server.
 #[component]
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
@@ -12,35 +16,22 @@ pub fn App() -> impl IntoView {
     let fallback_error = || {
         let mut outside_errors = Errors::default();
         outside_errors.insert_with_default_key(AppError::NotFound);
-        view! {
-            <ErrorTemplate outside_errors/>
-        }
-        .into_view()
+        view! { <ErrorTemplate outside_errors/> }.into_view()
     };
 
     view! {
         <Title text="Rupā"/>
-        <Stylesheet id="leptos" href="/pkg/rupa.css"/>
 
         <Router>
+            <header>
+                <Navigation/>
+            </header>
             <main>
                 <Routes fallback=fallback_error>
-                    <Route path=path!("") view=HomePage/>
+                    <Route path=path!("") view=DashboardPage/>
+                    <Route path=path!("login") view=LoginPage/>
                 </Routes>
             </main>
         </Router>
-    }
-}
-
-/// Renders the home page of your application.
-#[component]
-fn HomePage() -> impl IntoView {
-    // Creates a reactive value to update the button
-    let count = RwSignal::new(0);
-    let on_click = move |_| count.update(|count| *count += 1);
-
-    view! {
-        <h1>"Welcome to Leptos!"</h1>
-        <button on:click=on_click>"Click Me: " {count}</button>
     }
 }

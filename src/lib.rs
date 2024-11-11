@@ -1,5 +1,10 @@
+mod api;
 pub mod app;
-pub mod error_template;
+#[cfg(feature = "server")]
+pub mod cli;
+mod components;
+mod error;
+mod pages;
 
 #[cfg(feature = "web")]
 #[wasm_bindgen::prelude::wasm_bindgen]
