@@ -1,6 +1,25 @@
 #[cfg(feature = "server")]
 #[tokio::main]
 async fn main() {
+    use leptos::logging;
+    use rupa::cli::*;
+
+    let cli = AppCli::parse();
+
+    match cli.mode {
+        Modes::Master => {
+            logging::log!("Run in mode master");
+            run_as_master().await
+        }
+        Modes::Edge => {
+            logging::log!("Run in mode edge");
+            run_as_edge().await
+        }
+    };
+}
+
+#[cfg(feature = "server")]
+async fn run_as_master() {
     use axum::Router;
     use leptos::prelude::*;
     use leptos::*;
@@ -20,6 +39,29 @@ async fn main() {
         })
         .fallback(leptos_axum::file_and_error_handler(shell))
         .with_state(leptos_options);
+
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    logging::log!("listening on http://{}", &addr);
+    axum::serve(listener, app.into_make_service())
+        .await
+        .unwrap();
+}
+
+#[cfg(feature = "server")]
+async fn run_as_edge() {
+    use axum::Router;
+    use leptos::prelude::*;
+    use leptos::*;
+
+    let conf = get_configuration(None).unwrap();
+    let leptos_options = conf.leptos_options;
+    let addr = leptos_options.site_addr;
+
+    // build our application with a route
+    let app = Router::new().route(
+        "/api/*fn_name",
+        axum::routing::post(leptos_axum::handle_server_fns),
+    );
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     logging::log!("listening on http://{}", &addr);

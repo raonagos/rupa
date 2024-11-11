@@ -1,5 +1,7 @@
-pub mod app;
 mod api;
+pub mod app;
+#[cfg(feature = "server")]
+pub mod cli;
 mod components;
 mod error;
 mod pages;
