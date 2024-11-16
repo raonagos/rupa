@@ -9,9 +9,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 leptos = { version = "0.7.0-rc1" }
 leptos_meta = { version = "0.7.0-rc1" }
-axum = { version = "0.7", optional = true }
 leptos_router = { version = "0.7.0-rc1" }
 leptos_axum = { version = "0.7.0-rc1", optional = true }
+axum = { version = "0.7", features = ["macros"], optional = true }
 #
 http = "1"
 tower = { version = "0.5", features = ["util"], optional = true }
@@ -24,6 +24,7 @@ console_error_panic_hook = "0.1"
 tracing = { version = "0.1", optional = true }
 #
 clap = { version = "4.5.20", features = ["derive", "env"], optional = true }
+sqlx = { version = "0.8.2", features = ["runtime-tokio", "sqlite"], optional = true }
 
 [features]
 devices = ["leptos/csr"]
@@ -31,6 +32,7 @@ web = ["leptos/hydrate"]
 server = [
     "dep:axum",
     "dep:clap",
+    "dep:sqlx",
     "dep:tokio",
     "dep:tower",
     "leptos/ssr",

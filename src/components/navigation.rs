@@ -10,7 +10,7 @@ pub fn Navigation() -> impl IntoView {
     let is_login_page = move || !pathname.get().contains("login");
 
     view! {
-        <Show when=is_login_page fallback=|| ()>
+        <Show when=is_login_page>
             <nav class="navigation">
                 <A href="">"Dashboard"</A>
                 <A href="groups">"Groups"</A>

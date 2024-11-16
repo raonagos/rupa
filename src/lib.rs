@@ -4,7 +4,16 @@ pub mod app;
 pub mod cli;
 mod components;
 mod error;
+mod modules;
 mod pages;
+mod repositories;
+
+pub mod shared {
+    #[cfg(feature = "server")]
+    pub use crate::repositories::database::AppState;
+}
+
+type AppResult<T> = std::result::Result<T, error::AppError>;
 
 #[cfg(feature = "web")]
 #[wasm_bindgen::prelude::wasm_bindgen]
