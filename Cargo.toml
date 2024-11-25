@@ -7,10 +7,10 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-leptos = { version = "0.7.0-rc1" }
-leptos_meta = { version = "0.7.0-rc1" }
-leptos_router = { version = "0.7.0-rc1" }
-leptos_axum = { version = "0.7.0-rc1", optional = true }
+leptos = { version = "0.7.0-rc2" }
+leptos_meta = { version = "0.7.0-rc2" }
+leptos_router = { version = "0.7.0-rc2" }
+leptos_axum = { version = "0.7.0-rc2", optional = true }
 axum = { version = "0.7", features = ["macros"], optional = true }
 #
 http = "1"
