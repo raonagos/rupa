@@ -36,4 +36,3 @@
 - [ ] set up a testing framework for the server and CLI commands
 - [ ] write unit and integration tests for key functionalities
 - [ ] prepare for end-to-end testing involving the web app and server
-
