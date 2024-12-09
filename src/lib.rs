@@ -13,6 +13,7 @@ pub mod shared {
     pub use crate::repositories::database::AppState;
 }
 
+#[cfg(feature = "server")]
 type AppResult<T> = std::result::Result<T, error::AppError>;
 
 #[cfg(feature = "web")]
