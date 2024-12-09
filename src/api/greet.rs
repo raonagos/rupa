@@ -4,7 +4,7 @@ use leptos::prelude::*;
 pub async fn greet(name: String) -> Result<String, ServerFnError> {
     use crate::repositories::database::AppState;
 
-    let state = use_context::<AppState>();
+    let state = expect_context::<AppState>();
 
     leptos::logging::log!("state {state:?}");
 
