@@ -9,8 +9,14 @@ async fn main() {
     use rupa::shared::AppState;
     use sqlx::SqlitePool;
 
-    // #[cfg(feature = "sqlite")]
-    let pool = SqlitePool::connect(":memory:")
+    let AppCli {
+        database_path,
+        mode,
+        site_ext: _,
+        config_path: _,
+    } = AppCli::parse();
+
+    let pool = SqlitePool::connect(database_path.to_str().expect("couldn't convert the path"))
         .await
         .expect("couldn't initiate sqlite");
 
@@ -26,9 +32,7 @@ async fn main() {
         pool: std::sync::Arc::new(pool),
     };
 
-    let cli = AppCli::parse();
-
-    let app = match cli.mode.clone() {
+    let app = match mode {
         Modes::Master => Router::new()
             .leptos_routes(&app_state, routes, {
                 let leptos_options = app_state.leptos_options.clone();

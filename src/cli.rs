@@ -11,7 +11,7 @@ pub struct AppCli {
     #[arg(short = 'm', long, value_enum, env = "RUPA_MODE", default_value_t = Modes::Master)]
     pub mode: Modes,
 
-    /// Optional external site identifier (e.g., pf, fr, us, cn)
+    /// Optional external site extension identifier (e.g., pf, fr, us, cn)
     #[arg(long, env = "RUPA_SITE_EXT")]
     pub site_ext: Option<String>,
 
