@@ -14,17 +14,16 @@ Implemented so far:
 
 - [x] `rupa init` — SQLite database, server keypair, endpoint, DNS settings
 - [x] `rupa peer add|list|show|remove` — client configs, `--output`, `--qr`
-- [x] `rupa dns add|list|remove` — private DNS records
+- [x] `rupa dns add|list|remove|import` — private DNS records, hosts(5) import
+- [x] embedded DNS responder (UDP/TCP, A/PTR/SOA, forwarding)
 - [x] `rupa status`, `rupa doctor`
 - [ ] `rupa up` / `rupa reload` — userspace WireGuard runtime (P3)
-- [ ] embedded DNS responder (P2)
-- [ ] `rupa dns import` — uping `--dns-zone` import (P2)
 - [ ] systemd unit, release binary
 
 Not in 0.1.0: web UI, multi-VPS orchestration, IPv6, NAT/full tunnel.
 
-P1 is in: the SQLite schema, keys, peer config rendering and DNS record CRUD.
-The server runtime and the embedded DNS responder are next.
+P1 and P2 are in: SQLite config, keys, peers, client configs, DNS records, a
+working resolver, and `uping --dns-zone` import. The WireGuard runtime is next.
 
 Rupa is the private-network companion to
 [uping](https://github.com/raonagos/uping): uping serves the private sites on
@@ -45,6 +44,13 @@ server is embedded (`hickory-proto`).
 sudo ./scripts/dev-setup.sh   # Docker + passwordless sudo, dev machines only
 cargo build --release
 cargo test
+```
+
+The resolver can be exercised without the WireGuard runtime:
+
+```sh
+cargo run --example dns-serve -- /tmp/rupa-test/rupa.db 127.0.0.1:15353
+dig @127.0.0.1 -p 15353 site1.internal.example.com A
 ```
 
 The end-to-end test needs `CAP_NET_ADMIN` (TUN) and runs in a privileged

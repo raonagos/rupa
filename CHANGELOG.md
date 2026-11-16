@@ -12,3 +12,8 @@
   `wg-quick` rendering, secure `--output` and terminal QR codes.
 - `rupa dns add|list|remove`: manual and peer-managed records.
 - `rupa status` and `rupa doctor`.
+- Embedded DNS resolver: UDP and TCP, authoritative private zone, A/PTR/SOA,
+  NXDOMAIN/NODATA, and forwarding to upstream resolvers.
+- `rupa dns import`: `hosts(5)` input (stdin or file), `--source uping|manual`,
+  `--prune`, and protection against overwriting peer-managed names.
+- `dns-serve` example for debugging the resolver on a high port.

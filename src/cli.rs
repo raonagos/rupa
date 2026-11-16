@@ -172,6 +172,20 @@ pub enum DnsCmd {
         address: String,
     },
 
+    /// Import records from a hosts(5) file (e.g. `uping --dns-zone`).
+    Import {
+        /// Hosts file path, or "-" for stdin.
+        path: String,
+
+        /// Source to assign to imported records: uping (default) or manual.
+        #[arg(long, default_value = "uping")]
+        source: String,
+
+        /// Delete records from this source that are absent from the import.
+        #[arg(long)]
+        prune: bool,
+    },
+
     /// List DNS records (manual, imported and peer records).
     List {
         /// Emit machine-readable JSON.

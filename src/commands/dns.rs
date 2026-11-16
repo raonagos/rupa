@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::{self, Read};
 use std::net::Ipv4Addr;
 use std::path::Path;
 
@@ -7,12 +10,18 @@ use serde_json::json;
 use crate::cli::DnsCmd;
 use crate::control;
 use crate::db;
+use crate::dns::import::parse_hosts;
 use crate::model::DnsSource;
 use crate::util;
 
 pub fn run(db_path: &Path, command: DnsCmd) -> Result<()> {
     match command {
         DnsCmd::Add { name, address } => add(db_path, &name, &address),
+        DnsCmd::Import {
+            path,
+            source,
+            prune,
+        } => import(db_path, &path, &source, prune),
         DnsCmd::List { json } => list(db_path, json),
         DnsCmd::Remove { name, yes } => remove(db_path, &name, yes),
     }
@@ -116,6 +125,89 @@ fn remove(db_path: &Path, name: &str, yes: bool) -> Result<()> {
         bail!("DNS record '{name}' was not deleted");
     }
     println!("Removed DNS record {}", record.name);
+    control::notify_reload();
+    Ok(())
+}
+
+fn import(db_path: &Path, path: &str, source: &str, prune: bool) -> Result<()> {
+    let source = match source {
+        "uping" => DnsSource::Uping,
+        "manual" => DnsSource::Manual,
+        other => bail!("unsupported import source '{other}' (use uping or manual)"),
+    };
+
+    let input = if path == "-" {
+        let mut buffer = String::new();
+        io::stdin()
+            .read_to_string(&mut buffer)
+            .context("failed to read stdin")?;
+        buffer
+    } else {
+        fs::read_to_string(path).with_context(|| format!("failed to read {path}"))?
+    };
+
+    let parsed = parse_hosts(&input);
+    for warning in &parsed.warnings {
+        eprintln!("warning: {warning}");
+    }
+    if parsed.entries.is_empty() {
+        bail!("no valid DNS record found in {path}");
+    }
+
+    let mut entries: BTreeMap<String, Ipv4Addr> = BTreeMap::new();
+    for entry in parsed.entries {
+        entries.insert(entry.name, entry.address);
+    }
+
+    let mut conn = db::open(db_path)?;
+    let server = db::load_server(&conn)?;
+    let tx = conn.transaction()?;
+    let mut added = 0usize;
+    let mut updated = 0usize;
+
+    for (name, address) in &entries {
+        if let Some(existing) = db::find_dns_record(&tx, server.id, name)? {
+            if existing.source == DnsSource::Peer {
+                bail!("DNS name '{name}' is managed by a peer; remove the peer instead");
+            }
+            updated += 1;
+        } else {
+            added += 1;
+        }
+        db::upsert_dns_record(
+            &tx,
+            server.id,
+            name,
+            *address,
+            source,
+            None,
+            &util::now_rfc3339(),
+        )?;
+    }
+
+    let mut pruned = 0usize;
+    if prune {
+        let existing = db::list_dns_records(&tx, server.id)?;
+        for record in existing {
+            if record.source == source
+                && !entries.contains_key(&record.name)
+                && db::delete_dns_record(&tx, server.id, &record.name)?
+            {
+                pruned += 1;
+            }
+        }
+    }
+    tx.commit()?;
+
+    let prune_note = if prune {
+        format!(", {pruned} pruned")
+    } else {
+        String::new()
+    };
+    println!(
+        "Imported {} records ({added} new, {updated} overwritten{prune_note})",
+        entries.len()
+    );
     control::notify_reload();
     Ok(())
 }
