@@ -10,16 +10,21 @@ CLI first.
 `v0.1.0` is in development. The plan, feasibility notes and open decisions live
 in [docs/PLAN.md](docs/PLAN.md).
 
-Planned for 0.1.0:
+Implemented so far:
 
-- [ ] `rupa init` — create the SQLite database, server keypair, endpoint
-- [ ] `rupa up` — run the userspace WireGuard server (TUN + UDP)
-- [ ] `rupa peer add|list|show|remove` — generate client configs, QR codes
-- [ ] `rupa dns add|list|remove|import` — private zone and forwarder
-- [ ] `rupa status|reload|doctor`
+- [x] `rupa init` — SQLite database, server keypair, endpoint, DNS settings
+- [x] `rupa peer add|list|show|remove` — client configs, `--output`, `--qr`
+- [x] `rupa dns add|list|remove` — private DNS records
+- [x] `rupa status`, `rupa doctor`
+- [ ] `rupa up` / `rupa reload` — userspace WireGuard runtime (P3)
+- [ ] embedded DNS responder (P2)
+- [ ] `rupa dns import` — uping `--dns-zone` import (P2)
 - [ ] systemd unit, release binary
 
 Not in 0.1.0: web UI, multi-VPS orchestration, IPv6, NAT/full tunnel.
+
+P1 is in: the SQLite schema, keys, peer config rendering and DNS record CRUD.
+The server runtime and the embedded DNS responder are next.
 
 Rupa is the private-network companion to
 [uping](https://github.com/raonagos/uping): uping serves the private sites on

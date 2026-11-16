@@ -180,3 +180,12 @@ changes.
 
 Definition of done: a `wg-quick` client connects, pings `10.8.0.1`, resolves a
 private name through rupa, and reaches an uping site on `10.8.0.1:443`.
+
+## Progress
+
+- [x] P0 — repository, CI, license, plan, dev setup
+- [x] P1 — schema, keys, `init`, peers, `wg-quick` rendering, DNS record CRUD,
+  `status`, `doctor`
+- [ ] P2 — embedded DNS responder, `dns import`, reload
+- [ ] P3 — TUN/UDP runtime, control socket, signals, `up`/`down`/`reload`
+- [ ] P4 — end-to-end test, VPS smoke test, release
