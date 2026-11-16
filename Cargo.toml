@@ -1,0 +1,16 @@
+[package]
+name = "rupa"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "WireGuard VPN server and private DNS, configured in SQLite"
+license = "Apache-2.0"
+repository = "https://github.com/raonagos/rupa"
+authors = ["Alice <337614769+alice-agent-zc@users.noreply.github.com>"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
