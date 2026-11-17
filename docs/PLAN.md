@@ -189,8 +189,8 @@ private name through rupa, and reaches an uping site on `10.8.0.1:443`.
 - [x] P2 — embedded DNS responder, `dns import`
 - [x] P3 — TUN/UDP runtime, control socket, signals, `up`/`down`/`reload`,
   live DNS table reload
-- [x] P4 — end-to-end netns test (ping, DNS, HTTP, reload, shutdown); release
-  artifact next
+- [x] P4 — end-to-end netns test (ping, DNS, HTTP, reload, shutdown);
+  `v0.1.0` published at https://github.com/raonagos/rupa/releases/tag/v0.1.0
 
 ## Deployment note
 

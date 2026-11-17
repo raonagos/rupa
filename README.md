@@ -25,13 +25,26 @@ Rupa is the private-network companion to
 [uping](https://github.com/raonagos/uping): uping serves the private sites on
 `10.8.0.1`, rupa provides the tunnel and the DNS that resolves them.
 
+## Install
+
+Prebuilt glibc x86_64 binary for v0.1.0:
+
+```sh
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.0/rupa
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.0/rupa.sha256
+sha256sum -c rupa.sha256
+sudo install -m 0755 rupa /usr/local/bin/rupa
+```
+
+Or build from source (`cargo build --release`) and install
+`target/release/rupa`. The release binary is built on Ubuntu 22.04 and needs a
+glibc Linux x86_64 system.
+
 ## Quick start
 
 ```sh
-cargo build --release
-sudo install -m 0755 target/release/rupa /usr/local/bin/rupa
-
 sudo rupa init --endpoint vpn.example.com --dns-zone internal.example.com
+
 sudo install -m 0644 packaging/rupa.service /etc/systemd/system/rupa.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now rupa
