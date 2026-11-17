@@ -83,5 +83,9 @@ pub fn run(db_path: &Path, args: InitArgs) -> Result<()> {
     println!("Next:");
     println!("  sudo rupa up");
     println!("  sudo rupa peer add laptop --dns laptop --qr");
+    println!();
+    println!("If ufw is enabled, allow the VPN:");
+    println!("  ufw allow {}/udp", args.port);
+    println!("  ufw allow in on {interface}");
     Ok(())
 }

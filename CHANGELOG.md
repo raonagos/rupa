@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.0] - 2026-11-16
 
 ### Added
 
@@ -17,3 +17,10 @@
 - `rupa dns import`: `hosts(5)` input (stdin or file), `--source uping|manual`,
   `--prune`, and protection against overwriting peer-managed names.
 - `dns-serve` example for debugging the resolver on a high port.
+- Userspace WireGuard runtime on a TUN device (`rupa up`): endpoint learning,
+  per-peer allowed IPs, live handshake/transfer counters.
+- Control socket with `ping`, `stats`, `reload` and `shutdown`; `rupa down`,
+  `rupa reload`, live `rupa status` and `rupa peer list --live`.
+- `SIGHUP` reload of peers and DNS records; restart-required fields reported.
+- Systemd unit, ufw guidance, end-to-end netns test (ping, DNS, HTTP, reload,
+  shutdown).

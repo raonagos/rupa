@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::cli::{PeerAddArgs, PeerCmd};
 use crate::control;
@@ -95,8 +96,13 @@ fn list(db_path: &Path, live: bool, json_output: bool) -> Result<()> {
     let conn = db::open(db_path)?;
     let server = db::load_server(&conn)?;
     let peers = db::list_peers(&conn, server.id)?;
+    let stats = if live {
+        control::request("stats").ok()
+    } else {
+        None
+    };
 
-    if live && !control::is_running() {
+    if live && stats.is_none() {
         eprintln!(
             "note: --live requested but the server is not running; showing the database state"
         );
@@ -106,13 +112,22 @@ fn list(db_path: &Path, live: bool, json_output: bool) -> Result<()> {
         let values: Vec<_> = peers
             .iter()
             .map(|entry| {
+                let public_key = entry.peer.public_key_b64().ok();
+                let live_value = stats.as_ref().and_then(|stats| {
+                    let key = public_key.as_deref()?;
+                    stats["peers"]
+                        .as_array()?
+                        .iter()
+                        .find(|peer| peer["public_key"].as_str() == Some(key))
+                });
                 json!({
                     "name": &entry.peer.name,
                     "address": entry.peer.address.to_string(),
                     "dns": entry.dns_name.as_deref(),
-                    "public_key": entry.peer.public_key_b64().ok(),
+                    "public_key": public_key,
                     "created_at": &entry.peer.created_at,
                     "enabled": entry.peer.enabled,
+                    "live": live_value,
                 })
             })
             .collect();
@@ -122,6 +137,52 @@ fn list(db_path: &Path, live: bool, json_output: bool) -> Result<()> {
 
     if peers.is_empty() {
         println!("No peers.");
+        return Ok(());
+    }
+
+    if let Some(stats) = &stats {
+        let by_key: HashMap<&str, &Value> = stats["peers"]
+            .as_array()
+            .map(|peers| {
+                peers
+                    .iter()
+                    .filter_map(|peer| peer["public_key"].as_str().map(|key| (key, peer)))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        println!(
+            "{:<18} {:<14} {:<30} {:<10} {:<10} {:<10} {:<10}",
+            "NAME", "ADDRESS", "DNS", "CREATED", "HANDSHAKE", "RX", "TX"
+        );
+        for entry in &peers {
+            let key = entry.peer.public_key_b64()?;
+            let live_peer = by_key.get(key.as_str());
+            let handshake = live_peer
+                .and_then(|peer| peer["last_handshake"].as_u64())
+                .map(util::format_age_epoch)
+                .unwrap_or_else(|| "never".into());
+            let rx = util::format_bytes(
+                live_peer
+                    .and_then(|peer| peer["rx_bytes"].as_u64())
+                    .unwrap_or(0),
+            );
+            let tx = util::format_bytes(
+                live_peer
+                    .and_then(|peer| peer["tx_bytes"].as_u64())
+                    .unwrap_or(0),
+            );
+            println!(
+                "{:<18} {:<14} {:<30} {:<10} {:<10} {:<10} {:<10}",
+                entry.peer.name,
+                entry.peer.address,
+                entry.dns_name.as_deref().unwrap_or("-"),
+                util::short_date(&entry.peer.created_at),
+                handshake,
+                rx,
+                tx,
+            );
+        }
         return Ok(());
     }
 

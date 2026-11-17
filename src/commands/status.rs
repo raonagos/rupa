@@ -3,19 +3,25 @@ use std::path::Path;
 use anyhow::Result;
 use serde_json::json;
 
-use crate::{control, db};
+use crate::{control, db, util};
 
 pub fn run(db_path: &Path, json_output: bool) -> Result<()> {
     let conn = db::open(db_path)?;
     let server = db::load_server(&conn)?;
     let peers = db::list_peers(&conn, server.id)?;
     let records = db::list_dns_records(&conn, server.id)?;
-    let running = control::is_running();
+    let runtime_stats = if control::is_running() {
+        control::request("stats").ok()
+    } else {
+        None
+    };
+    let running = runtime_stats.is_some();
 
     if json_output {
         let value = json!({
             "db": db_path.display().to_string(),
             "runtime": running,
+            "runtime_stats": &runtime_stats,
             "server": {
                 "name": &server.name,
                 "interface": &server.interface,
@@ -59,5 +65,23 @@ pub fn run(db_path: &Path, json_output: bool) -> Result<()> {
         "Runtime: {}",
         if running { "running" } else { "not running" }
     );
+
+    if let Some(stats) = &runtime_stats {
+        println!("  pid:        {}", stats["pid"].as_u64().unwrap_or(0));
+        println!("  uptime:     {}s", stats["uptime_s"].as_u64().unwrap_or(0));
+        if let Some(peers) = stats["peers"].as_array() {
+            for peer in peers {
+                let key = peer["public_key"].as_str().unwrap_or("");
+                let key = key.get(..12).unwrap_or(key);
+                let handshake = peer["last_handshake"]
+                    .as_u64()
+                    .map(util::format_age_epoch)
+                    .unwrap_or_else(|| "never".into());
+                let rx = util::format_bytes(peer["rx_bytes"].as_u64().unwrap_or(0));
+                let tx = util::format_bytes(peer["tx_bytes"].as_u64().unwrap_or(0));
+                println!("  peer {key} handshake {handshake} rx {rx} tx {tx}");
+            }
+        }
+    }
     Ok(())
 }

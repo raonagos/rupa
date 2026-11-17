@@ -102,6 +102,18 @@ pub fn run(db_path: &Path) -> Result<()> {
                         "DNS listeners: {}",
                         server.dns_listen_addrs().join(", ")
                     ));
+
+                    if euid == 0 {
+                        if let Ok(output) = Command::new("ufw").arg("status").output() {
+                            let text = String::from_utf8_lossy(&output.stdout);
+                            if output.status.success() && text.contains("Status: active") {
+                                warn(&format!(
+                                    "ufw is active; clients need these rules:\n         ufw allow {}/udp\n         ufw allow in on {}",
+                                    server.listen_port, server.interface
+                                ));
+                            }
+                        }
+                    }
                 }
                 Err(err) => {
                     fail(&format!("server: {err:#}"));

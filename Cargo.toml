@@ -13,6 +13,7 @@ anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+env_logger = "0.11"
 getrandom = "0.2"
 hickory-proto = "0.26"
 ipnet = "2"
@@ -21,7 +22,7 @@ qrcode = { version = "0.14", default-features = false }
 rusqlite = { version = "0.43", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros", "sync", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros", "sync", "io-util", "signal"] }
 wireguard = { git = "https://github.com/conduition/wireguard-rs", rev = "dfe5aeffa898ccecefd77e15519bec1b56c33278" }
 
 [dev-dependencies]

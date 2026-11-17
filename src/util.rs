@@ -170,6 +170,41 @@ pub fn short_date(rfc3339: &str) -> String {
         .unwrap_or_else(|_| rfc3339.chars().take(10).collect())
 }
 
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+pub fn format_age_secs(age: u64) -> String {
+    if age < 60 {
+        format!("{age}s")
+    } else if age < 3600 {
+        format!("{}m", age / 60)
+    } else if age < 86_400 {
+        format!("{}h", age / 3600)
+    } else {
+        format!("{}d", age / 86_400)
+    }
+}
+
+pub fn format_age_epoch(epoch_secs: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format_age_secs(now.saturating_sub(epoch_secs))
+}
+
 /// Ask for confirmation. Refuses to guess when stdin is not a terminal.
 pub fn confirm(prompt: &str) -> Result<bool> {
     if !io::stdin().is_terminal() {
@@ -245,6 +280,16 @@ mod tests {
         assert_eq!(validate_endpoint("203.0.113.10").unwrap(), "203.0.113.10");
         assert!(validate_endpoint("vpn.example.com:51820").is_err());
         assert!(validate_endpoint("::1").is_err());
+    }
+
+    #[test]
+    fn formats_bytes_and_ages() {
+        assert_eq!(format_bytes(512), "512 B");
+        assert_eq!(format_bytes(2048), "2.0 KiB");
+        assert_eq!(format_age_secs(5), "5s");
+        assert_eq!(format_age_secs(125), "2m");
+        assert_eq!(format_age_secs(7300), "2h");
+        assert_eq!(format_age_secs(172_800), "2d");
     }
 
     #[test]
