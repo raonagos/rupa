@@ -78,6 +78,54 @@ sudo rupa dns list
 Rupa only resolves names. A private ACME CA (step-ca) still needs its root
 installed on the clients; uping still owns the certificates.
 
+## Private site behind uping
+
+Goal: a site listening on `127.0.0.1:14080` on the VPS, served as
+`site1.internal.rao-nagos.pf`, reachable only through the VPN.
+
+Uping is the reverse proxy; rupa is the tunnel **and the resolver**. The client
+must resolve the name before it can connect:
+
+1. the client asks rupa DNS (`10.8.0.1`, set by `DNS =` in the client config)
+   for `site1.internal.rao-nagos.pf`;
+2. rupa answers `10.8.0.1` from its SQLite records;
+3. the client connects to `10.8.0.1:443` through the tunnel;
+4. uping, listening only on `10.8.0.1:443`, terminates TLS for that name and
+   proxies to `127.0.0.1:14080`.
+
+```toml
+# /etc/uping/config.toml
+[[server]]
+domain       = "site1.internal.rao-nagos.pf"
+upstream     = "127.0.0.1:14080"
+https_listen = "10.8.0.1"     # private listener: tunnel only
+keys         = "internal"     # or "manual"
+```
+
+`https_listen` is what makes the site private: uping accepts it only on the
+tunnel address, while the upstream stays on localhost. Adding a listener needs
+an uping restart (`systemctl restart uping`), not a reload.
+
+Publish the name in rupa; `uping --dns-zone` derives the address from
+`https_listen`:
+
+```sh
+uping --dns-zone /etc/uping/config.toml | sudo rupa dns import - --prune
+sudo rupa dns list
+# site1.internal.rao-nagos.pf   10.8.0.1   uping
+```
+
+The client config from `rupa peer add` already sets `DNS = 10.8.0.1`, so no
+per-device `/etc/hosts` is needed. The A record must be **`10.8.0.1`**, never
+`127.0.0.1`: `127.0.0.1` on the client is the client itself. The site never
+listens publicly; only uping on the tunnel address does.
+
+With `keys = "internal"`, step-ca must resolve the name to `10.8.0.1` and reach
+port 80 on that address for http-01. Uping's HTTP listener is host-wide: if
+`[listen] ipv4` is the public address only, either bind it to `0.0.0.0` or use
+a manual certificate (`keys = "manual"`, `serve_http = false`) issued by
+step-ca. The client must trust the step-ca root in either case.
+
 ## Firewall
 
 ufw's default incoming policy blocks two different things:
