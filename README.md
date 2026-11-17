@@ -7,7 +7,7 @@ CLI first.
 
 ## Status
 
-`v0.1.0` — feature-complete and tested end-to-end with a kernel WireGuard
+`v0.1.1` — feature-complete and tested end-to-end with a kernel WireGuard
 client (TUN, handshake, private DNS, HTTP through the tunnel, reload,
 shutdown).
 
@@ -27,11 +27,11 @@ Rupa is the private-network companion to
 
 ## Install
 
-Prebuilt glibc x86_64 binary for v0.1.0:
+Prebuilt glibc x86_64 binary for v0.1.1:
 
 ```sh
-curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.0/rupa
-curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.0/rupa.sha256
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.1/rupa
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.1/rupa.sha256
 sha256sum -c rupa.sha256
 sudo install -m 0755 rupa /usr/local/bin/rupa
 ```

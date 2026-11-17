@@ -8,6 +8,7 @@ use crate::{control, db};
 
 pub fn run(db_path: &Path) -> Result<()> {
     let mut failed = false;
+    let running = control::is_running();
 
     println!("rupa doctor");
     println!();
@@ -72,12 +73,19 @@ pub fn run(db_path: &Path) -> Result<()> {
                         }
                     }
 
-                    match UdpSocket::bind(("0.0.0.0", server.listen_port)) {
-                        Ok(_) => ok(&format!("udp/{} is free", server.listen_port)),
-                        Err(err) => warn(&format!(
-                            "udp/{} is not bindable (server already running?): {err}",
+                    if running {
+                        ok(&format!(
+                            "udp/{} is held by the running rupa server",
                             server.listen_port
-                        )),
+                        ));
+                    } else {
+                        match UdpSocket::bind(("0.0.0.0", server.listen_port)) {
+                            Ok(_) => ok(&format!("udp/{} is free", server.listen_port)),
+                            Err(err) => warn(&format!(
+                                "udp/{} is not bindable (another process?): {err}",
+                                server.listen_port
+                            )),
+                        }
                     }
 
                     if has_ip {
@@ -89,10 +97,23 @@ pub fn run(db_path: &Path) -> Result<()> {
                             .map(|output| output.status.success())
                             .unwrap_or(false);
                         if exists {
-                            warn(&format!(
-                                "interface {} already exists (server running?)",
+                            if running {
+                                ok(&format!(
+                                    "interface {} exists (running server)",
+                                    server.interface
+                                ));
+                            } else {
+                                warn(&format!(
+                                    "interface {} already exists (stale?)",
+                                    server.interface
+                                ));
+                            }
+                        } else if running {
+                            fail(&format!(
+                                "control socket is up but interface {} is missing",
                                 server.interface
                             ));
+                            failed = true;
                         } else {
                             ok(&format!("interface {} is free", server.interface));
                         }
@@ -104,15 +125,7 @@ pub fn run(db_path: &Path) -> Result<()> {
                     ));
 
                     if euid == 0 {
-                        if let Ok(output) = Command::new("ufw").arg("status").output() {
-                            let text = String::from_utf8_lossy(&output.stdout);
-                            if output.status.success() && text.contains("Status: active") {
-                                warn(&format!(
-                                    "ufw is active; clients need these rules:\n         ufw allow {}/udp\n         ufw allow in on {}",
-                                    server.listen_port, server.interface
-                                ));
-                            }
-                        }
+                        check_ufw(server.listen_port, &server.interface);
                     }
                 }
                 Err(err) => {
@@ -127,7 +140,7 @@ pub fn run(db_path: &Path) -> Result<()> {
         }
     }
 
-    if control::is_running() {
+    if running {
         ok("control socket is accepting connections");
     } else {
         warn("server is not running (expected before `rupa up`)");
@@ -139,6 +152,56 @@ pub fn run(db_path: &Path) -> Result<()> {
     }
     println!("doctor: no blocking problem found");
     Ok(())
+}
+
+fn check_ufw(port: u16, interface: &str) {
+    let output = match Command::new("ufw").arg("status").output() {
+        Ok(output) => output,
+        Err(_) => return,
+    };
+    if !output.status.success() {
+        return;
+    }
+    let status = String::from_utf8_lossy(&output.stdout);
+    if !status.contains("Status: active") {
+        ok("ufw is not active");
+        return;
+    }
+
+    let (port_ok, interface_ok) = ufw_rules(&status, port, interface);
+    match (port_ok, interface_ok) {
+        (true, true) => ok(&format!("ufw allows {port}/udp and {interface}")),
+        _ => {
+            warn("ufw is active; missing rules:");
+            if !port_ok {
+                println!("         ufw allow {port}/udp");
+            }
+            if !interface_ok {
+                println!("         ufw allow in on {interface}");
+            }
+        }
+    }
+}
+
+/// Return (port UDP allowed, interface allowed) from `ufw status` output.
+fn ufw_rules(status: &str, port: u16, interface: &str) -> (bool, bool) {
+    let port_rule = format!("{port}/udp");
+    let interface_rule = format!("on {interface}");
+    let mut port_ok = false;
+    let mut interface_ok = false;
+
+    for line in status.lines() {
+        if !line.contains("ALLOW") {
+            continue;
+        }
+        if line.trim_start().starts_with(&port_rule) {
+            port_ok = true;
+        }
+        if line.contains(&interface_rule) {
+            interface_ok = true;
+        }
+    }
+    (port_ok, interface_ok)
 }
 
 fn ok(message: &str) {
@@ -157,4 +220,36 @@ fn which(name: &str) -> bool {
     std::env::var_os("PATH")
         .map(|paths| std::env::split_paths(&paths).any(|directory| directory.join(name).is_file()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ufw_rules;
+
+    #[test]
+    fn detects_allowed_port_and_interface() {
+        let status = "\
+Status: active
+
+To                         Action      From
+--                         ------      ----
+51820/udp                  ALLOW       Anywhere
+Anywhere on rupa0          ALLOW       Anywhere
+51820/udp (v6)             ALLOW       Anywhere (v6)
+Anywhere (v6) on rupa0     ALLOW       Anywhere (v6)
+";
+        assert_eq!(ufw_rules(status, 51820, "rupa0"), (true, true));
+        assert_eq!(ufw_rules(status, 51821, "rupa0"), (false, true));
+        assert_eq!(ufw_rules(status, 51820, "rupa1"), (true, false));
+    }
+
+    #[test]
+    fn deny_and_limit_are_not_allow() {
+        let status = "\
+Status: active
+51820/udp                  DENY        Anywhere
+Anywhere on rupa0          LIMIT       Anywhere
+";
+        assert_eq!(ufw_rules(status, 51820, "rupa0"), (false, false));
+    }
 }

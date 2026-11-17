@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.1] - 2026-11-16
+
+### Fixed
+
+- `rupa doctor` no longer reports the UDP port and the TUN interface as
+  problems when the server is running: both are held by rupa itself.
+- `rupa doctor` now checks the actual ufw rules instead of warning whenever
+  ufw is active. It confirms `<port>/udp` and `on <interface>`, and prints only
+  the missing rules.
+
 ## [0.1.0] - 2026-11-16
 
 ### Added
