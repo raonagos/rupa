@@ -93,7 +93,13 @@ sudo ufw allow in on rupa0    # or the --interface you chose
 
 With nftables, the equivalents are an `udp dport 51820 accept` input rule and
 an `iifname "rupa0" accept` input rule. Rupa does not modify the firewall;
-`rupa doctor` warns when ufw is active.
+`rupa doctor` checks these rules and prints only the missing ones.
+
+The WireGuard socket is UDP: `ss -tnlp` only lists TCP. Inspect it with:
+
+```sh
+sudo ss -unlp | grep 51820
+```
 
 ## Design
 
