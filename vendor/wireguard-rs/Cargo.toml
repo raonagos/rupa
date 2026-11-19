@@ -1,0 +1,52 @@
+[package]
+authors = ["Mathias Hall-Andersen <mathias@hall-andersen.dk>", "conduition <conduition@proton.me>"]
+edition = "2018"
+license = "MIT"
+name = "wireguard"
+version = "0.2.0"
+description = "The Rust wireguard reference implementation, converted into a usable library."
+keywords = ["wireguard", "wg", "vpn", "p2p", "mesh"]
+homepage = "https://github.com/conduition/wireguard-rs"
+repository = "https://github.com/conduition/wireguard-rs"
+documentation = "https://docs.rs/wireguard/"
+
+[dependencies]
+aead = "^0.3"
+arraydeque = "0.4.5"
+blake2 = "^0.9"
+byteorder = "1.3"
+chacha20poly1305 = "^0.7"
+clear_on_drop = "0.2.3"
+dashmap = "^4.0"
+crossbeam-channel = "^0.5"
+generic-array = "^0.14"
+hex = "0.4"
+hjul = "0.2.2"
+hmac = "^0.10"
+log = "0.4"
+num_cpus = "^1.10"
+rand = "^0.7"
+rand_core = "^0.5"
+ring = "0.16"
+spin = "0.7"
+subtle = "^2.4"
+x25519-dalek = "^1.1"
+zerocopy = "0.3"
+
+[dependencies.treebitmap]
+package = "ip_network_table-deps-treebitmap"
+version = "0.5.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "^0.2"
+
+[features]
+default = []
+unstable = []
+start_up = []
+
+[dev-dependencies]
+env_logger = "^0.8"
+pnet = "^0.27"
+proptest = "^0.10"
+rand_chacha = "^0.2"

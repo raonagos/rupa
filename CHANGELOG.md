@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.3] - 2026-11-19
+
+### Fixed
+
+- `wireguard-rs` is vendored (`vendor/wireguard-rs`) with one local fix:
+  `Device::release` no longer panics when a handshake id is released twice.
+  The assertion fires in production — three to four times a day on a two-peer
+  server — and the panic lands in a handshake worker, which nothing supervises:
+  each occurrence permanently removed one worker, and with one worker per CPU
+  the tunnel stopped handshaking for good after `nproc` panics while the
+  process stayed up and `rupa status` kept answering.
+  The id table is an index (local id -> peer) used to demultiplex handshake
+  responses and cookie replies, not an ownership record; removing an absent
+  entry is a no-op, as in the kernel and wireguard-go.
+  The 0.1.2 panic hook stays as a safety net for anything else.
+
 ## [0.1.2] - 2026-11-19
 
 ### Fixed

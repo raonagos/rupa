@@ -1,6 +1,6 @@
 [package]
 name = "rupa"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 rust-version = "1.89"
 description = "WireGuard VPN server and private DNS, configured in SQLite"
@@ -29,6 +29,14 @@ wireguard = { git = "https://github.com/conduition/wireguard-rs", rev = "dfe5aef
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+
+# wireguard-rs is pinned to a commit, so it cannot simply be bumped: the
+# vendored copy (vendor/wireguard-rs, see vendor/README.md) carries one local
+# fix — `Device::release` no longer panics when a handshake id is released
+# twice, which used to kill one handshake worker per occurrence and eventually
+# left the tunnel unable to handshake at all.
+[patch."https://github.com/conduition/wireguard-rs"]
+wireguard = { path = "vendor/wireguard-rs" }
 
 [profile.release]
 lto = "thin"
