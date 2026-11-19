@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.2] - 2026-11-19
+
+### Fixed
+
+- A panic in a worker thread no longer leaves a silently dead tunnel. The
+  userspace WireGuard runtime spawns one handshake worker per CPU; when one
+  panicked (wireguard-rs `released id not allocated`, on a retransmitted
+  handshake initiation), the process stayed up and `rupa status` kept
+  answering, but no handshake could complete any more until a manual restart.
+  Any panic now aborts the process so systemd's `Restart=on-failure` restarts
+  it, and the panic is logged.
+- `rupa up` now logs one line at startup (interface, address, mtu, UDP port,
+  peer count, DNS listeners, endpoint). Previously a healthy start logged
+  nothing at all, which made the journal look empty.
+
 ## [0.1.1] - 2026-11-16
 
 ### Fixed
