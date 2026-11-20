@@ -5,29 +5,27 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-ExecStart=/usr/local/bin/rupa up
+# systemd defaults left implicit: Type=simple, User=root, KillSignal=SIGTERM,
+# StartLimitBurst, PrivateDevices=no.
+ExecStart=/usr/bin/rupa up
+EnvironmentFile=-/etc/rupa/rupa.env
+
 Restart=on-failure
 RestartSec=2
-StartLimitBurst=5
-KillSignal=SIGTERM
 TimeoutStopSec=10
 
-# The TUN device, UDP socket and DNS :53 need root.
-User=root
+# The TUN device, the UDP socket and DNS :53 need root; the rest is narrowed
+# down. StateDirectory and RuntimeDirectory are writable even with
+# ProtectSystem=strict, so there is no ReadWritePaths to duplicate.
 StateDirectory=rupa
 StateDirectoryMode=0700
 RuntimeDirectory=rupa
 RuntimeDirectoryMode=0750
-
-# Keep the service on the network/UNIX side; it does not need the rest.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-PrivateDevices=no
-ReadWritePaths=/var/lib/rupa /run/rupa
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 LimitNOFILE=65536
 

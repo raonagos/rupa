@@ -6,3 +6,6 @@
 *.db-wal
 *.conf
 .env
+
+# packaging output
+dist/

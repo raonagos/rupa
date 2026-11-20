@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.0] - 2026-11-19
+
+### Added
+
+- Debian package, built by `packaging/build-deb.sh` and published on every tag:
+  `/usr/bin/rupa`, the unit in `/usr/lib/systemd/system/rupa.service`,
+  `/etc/rupa/rupa.env` as a conffile (dpkg keeps a locally edited copy and never
+  overwrites it on upgrade) and `/var/lib/rupa` (0700) for the database.
+  /run/rupa is created by systemd at start.
+- The release workflow now builds the binary, the `.deb` and a `SHA256SUMS`
+  file and publishes them as GitHub release assets.
+
+### Changed
+
+- The unit leaves systemd's defaults implicit (`Type=simple`, `User=root`,
+  `KillSignal=SIGTERM`, `StartLimitBurst`, `PrivateDevices=no`) and drops
+  `ReadWritePaths`: `StateDirectory`/`RuntimeDirectory` already carve out the
+  writable paths under `ProtectSystem=strict`.
+- Installation docs target the package; the hand-installed
+  `/usr/local/bin/rupa` + `/etc/systemd/system/rupa.service` layout is gone.
+
 ## [0.1.3] - 2026-11-19
 
 ### Fixed
