@@ -93,6 +93,24 @@ async fn run(db_path: &Path) -> Result<()> {
         .context("failed to bind the DNS resolver")?;
     let dns_handle = tokio::spawn(dns.run());
 
+    let listener_list = listeners
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    eprintln!(
+        "rupa {}: {} up {}/{} mtu {}, udp :{}, {} peer(s), dns {}, endpoint {}",
+        env!("CARGO_PKG_VERSION"),
+        server.interface,
+        server.address,
+        server.subnet.prefix_len(),
+        server.mtu,
+        server.listen_port,
+        runtime_peers.len(),
+        listener_list,
+        server.endpoint.as_deref().unwrap_or("-"),
+    );
+
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
     let ctx = RuntimeCtx {
         cfg,
