@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.2.1] - 2026-11-19
+
+### Added
+
+- IPv6: a unique-local /64 per server (random inside `fd00::/8` unless
+  `--v6-subnet` is given, `--no-ipv6` opts out). The server takes `::1`, peers
+  `::2`, `::3`, …, the TUN carries both families, peer allowed-ips include the
+  /128, and the private zone answers `AAAA` with the server address.
+- Full tunnel (`--full-tunnel`): client configs get
+  `AllowedIPs = 0.0.0.0/0, ::/0` and the daemon enables forwarding and installs
+  iptables/ip6tables `MASQUERADE` + `FORWARD` rules on the default-route
+  interface, removed on shutdown. A NAT failure is logged and never stops the
+  tunnel from starting.
+- `rupa config set [--v6-subnet CIDR] [--no-ipv6] [--full-tunnel on|off]` to
+  change those settings on an existing database (restart required).
+
+### Changed
+
+- Schema v2. A v1 database is migrated in place the first time any command
+  opens it; the new columns default to NULL/false, so an existing deployment
+  keeps its exact split-tunnel IPv4 behaviour until `rupa config set` is used.
+- `wireguard-rs` points at `tetuaoro/wireguard-rs` (PR conduition#1, the
+  release-of-a-missing-id fix) instead of a vendored copy.
+- The tag workflow builds the `.deb` and `SHA256SUMS` and publishes them as
+  release assets.
+
 ## [0.2.0] - 2026-11-19
 
 ### Added

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -24,7 +24,8 @@ use crate::control::{self, DEFAULT_SOCKET};
 use crate::db;
 use crate::dns::{DnsServer, DnsTable, SharedTable};
 use crate::keys;
-use crate::model::{PeerWithDns, Server};
+use crate::model::{Peer, PeerWithDns, Server};
+use crate::nat;
 
 pub fn run_blocking(db_path: &Path) -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -65,6 +66,12 @@ async fn run(db_path: &Path) -> Result<()> {
         })?;
     let link_guard = LinkGuard::new(&server.interface);
     setup_link(&server)?;
+    let nat_guard = NatGuard::new(&server);
+    if server.full_tunnel {
+        if let Err(err) = nat::apply(&server) {
+            eprintln!("rupa: warning: full tunnel setup failed, continuing without NAT: {err:#}");
+        }
+    }
 
     let wg: WireGuard<plt::Tun, plt::UDP> = WireGuard::new(writer);
     while let Some(reader) = readers.pop() {
@@ -154,9 +161,25 @@ async fn run(db_path: &Path) -> Result<()> {
     control_handle.abort();
     dns_handle.abort();
     drop(socket_guard);
+    drop(nat_guard);
     drop(link_guard);
     eprintln!("rupa: stopped");
     Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PeerAddress {
+    v4: Ipv4Addr,
+    v6: Option<Ipv6Addr>,
+}
+
+impl PeerAddress {
+    fn of(peer: &Peer) -> Self {
+        Self {
+            v4: peer.address,
+            v6: peer.v6_address,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -165,7 +188,7 @@ struct RuntimeCtx {
     table: SharedTable,
     db_path: PathBuf,
     server: Server,
-    peers: Arc<Mutex<HashMap<[u8; 32], Ipv4Addr>>>,
+    peers: Arc<Mutex<HashMap<[u8; 32], PeerAddress>>>,
     started: Instant,
     shutdown: watch::Sender<bool>,
 }
@@ -173,15 +196,22 @@ struct RuntimeCtx {
 fn install_peer(
     cfg: &WireGuardConfig<plt::Tun, plt::UDP>,
     entry: &PeerWithDns,
-    runtime: &mut HashMap<[u8; 32], Ipv4Addr>,
+    runtime: &mut HashMap<[u8; 32], PeerAddress>,
 ) -> Result<()> {
     let key = key_array(&entry.peer.public_key, "peer public key")?;
     let public_key = PublicKey::from(key);
     if cfg.add_peer(&public_key) {
-        cfg.add_allowed_ip(&public_key, IpAddr::V4(entry.peer.address), 32);
+        add_allowed_ips(cfg, &public_key, &entry.peer);
     }
-    runtime.insert(key, entry.peer.address);
+    runtime.insert(key, PeerAddress::of(&entry.peer));
     Ok(())
+}
+
+fn add_allowed_ips(cfg: &WireGuardConfig<plt::Tun, plt::UDP>, public_key: &PublicKey, peer: &Peer) {
+    cfg.add_allowed_ip(public_key, IpAddr::V4(peer.address), 32);
+    if let Some(v6_address) = peer.v6_address {
+        cfg.add_allowed_ip(public_key, IpAddr::V6(v6_address), 128);
+    }
 }
 
 fn reload(ctx: &RuntimeCtx) -> Result<Value> {
@@ -194,22 +224,21 @@ fn reload(ctx: &RuntimeCtx) -> Result<Value> {
         .peers
         .lock()
         .map_err(|_| anyhow::anyhow!("peer runtime state is poisoned"))?;
-    let mut desired: HashMap<[u8; 32], Ipv4Addr> = HashMap::new();
+    let mut desired: HashMap<[u8; 32], PeerAddress> = HashMap::new();
     for entry in entries.iter().filter(|entry| entry.peer.enabled) {
         let key = key_array(&entry.peer.public_key, "peer public key")?;
         let public_key = PublicKey::from(key);
-        desired.insert(key, entry.peer.address);
+        let peer_address = PeerAddress::of(&entry.peer);
+        desired.insert(key, peer_address);
         match runtime.get(&key) {
-            Some(address) if *address == entry.peer.address => {}
+            Some(current) if *current == peer_address => {}
             Some(_) => {
                 ctx.cfg.replace_allowed_ips(&public_key);
-                ctx.cfg
-                    .add_allowed_ip(&public_key, IpAddr::V4(entry.peer.address), 32);
+                add_allowed_ips(&ctx.cfg, &public_key, &entry.peer);
             }
             None => {
                 if ctx.cfg.add_peer(&public_key) {
-                    ctx.cfg
-                        .add_allowed_ip(&public_key, IpAddr::V4(entry.peer.address), 32);
+                    add_allowed_ips(&ctx.cfg, &public_key, &entry.peer);
                 }
             }
         }
@@ -252,6 +281,15 @@ fn restart_fields(old: &Server, new: &Server) -> Vec<&'static str> {
     }
     if old.subnet != new.subnet {
         fields.push("subnet");
+    }
+    if old.v6_subnet != new.v6_subnet {
+        fields.push("v6_subnet");
+    }
+    if old.v6_address != new.v6_address {
+        fields.push("v6_address");
+    }
+    if old.full_tunnel != new.full_tunnel {
+        fields.push("full_tunnel");
     }
     if old.mtu != new.mtu {
         fields.push("mtu");
@@ -379,6 +417,10 @@ fn parse_listeners(server: &Server) -> Result<Vec<SocketAddr>> {
 fn setup_link(server: &Server) -> Result<()> {
     let cidr = format!("{}/{}", server.address, server.subnet.prefix_len());
     run_ip(&["addr", "add", &cidr, "dev", &server.interface])?;
+    if let (Some(v6_address), Some(v6_subnet)) = (server.v6_address, server.v6_subnet) {
+        let v6_cidr = format!("{v6_address}/{}", v6_subnet.prefix_len());
+        run_ip(&["-6", "addr", "add", &v6_cidr, "dev", &server.interface])?;
+    }
     let mtu = server.mtu.to_string();
     run_ip(&["link", "set", "dev", &server.interface, "mtu", &mtu])?;
     run_ip(&["link", "set", "dev", &server.interface, "up"])?;
@@ -430,6 +472,30 @@ impl Drop for LinkGuard {
     }
 }
 
+/// Removes full-tunnel rules when the server stops through any path (signal,
+/// shutdown request or an error after startup).
+struct NatGuard {
+    server: Option<Server>,
+}
+
+impl NatGuard {
+    fn new(server: &Server) -> Self {
+        Self {
+            server: server.full_tunnel.then(|| server.clone()),
+        }
+    }
+}
+
+impl Drop for NatGuard {
+    fn drop(&mut self) {
+        if let Some(server) = &self.server {
+            if let Err(err) = nat::remove(server) {
+                eprintln!("rupa: warning: full tunnel teardown failed: {err:#}");
+            }
+        }
+    }
+}
+
 struct SocketGuard;
 
 impl Drop for SocketGuard {
@@ -453,6 +519,9 @@ mod tests {
             listen_port: 51820,
             address: "10.8.0.1".parse().unwrap(),
             subnet: "10.8.0.0/24".parse().unwrap(),
+            v6_subnet: None,
+            v6_address: None,
+            full_tunnel: false,
             mtu: 1420,
             endpoint: Some("vpn.example.com".into()),
             interface: "rupa0".into(),
@@ -473,5 +542,16 @@ mod tests {
         let mut endpoint_only = server.clone();
         endpoint_only.endpoint = Some("other.example.com".into());
         assert!(restart_fields(&server, &endpoint_only).is_empty());
+
+        let mut v6_changed = server.clone();
+        v6_changed.v6_address = Some("fd12:3456:789a::1".parse().unwrap());
+        v6_changed.v6_subnet = Some("fd12:3456:789a::/64".parse().unwrap());
+        let fields = restart_fields(&server, &v6_changed);
+        assert!(fields.contains(&"v6_address"));
+        assert!(fields.contains(&"v6_subnet"));
+
+        let mut full_tunnel = server.clone();
+        full_tunnel.full_tunnel = true;
+        assert!(restart_fields(&server, &full_tunnel).contains(&"full_tunnel"));
     }
 }

@@ -1,3 +1,4 @@
+pub mod config;
 pub mod dns;
 pub mod doctor;
 pub mod init;
@@ -15,6 +16,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Command::Init(args) => init::run(&cli.db, args),
         Command::Peer(command) => peer::run(&cli.db, command),
         Command::Dns(command) => dns::run(&cli.db, command),
+        Command::Config(command) => config::run(&cli.db, command),
         Command::Status { json } => status::run(&cli.db, json),
         Command::Doctor => doctor::run(&cli.db),
         Command::Up => runtime::run_blocking(&cli.db),

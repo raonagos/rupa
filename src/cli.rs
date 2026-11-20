@@ -5,6 +5,7 @@ use clap::{Args, Parser, Subcommand};
 const EXAMPLES: &str = "\
 Examples:
   sudo rupa init --endpoint vpn.example.com --dns-zone internal.example.com
+  sudo rupa init --endpoint vpn.example.com --full-tunnel
   sudo rupa peer add laptop --dns laptop --qr
   sudo rupa peer list
   sudo rupa dns add site1.internal.example.com 10.8.0.1
@@ -60,6 +61,28 @@ pub enum Command {
     /// Manage internal DNS records.
     #[command(subcommand)]
     Dns(DnsCmd),
+
+    /// Change the tunnel network settings (needs a restart).
+    #[command(subcommand)]
+    Config(ConfigCmd),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigCmd {
+    /// Enable IPv6 (ULA /64), drop it, or turn the full tunnel on/off.
+    Set {
+        /// IPv6 unique-local /64 for the tunnel. Rewrites every peer address.
+        #[arg(long, conflicts_with = "no_ipv6")]
+        v6_subnet: Option<String>,
+
+        /// Remove IPv6 from the tunnel and from every peer.
+        #[arg(long)]
+        no_ipv6: bool,
+
+        /// Route all client traffic through the server (on|off).
+        #[arg(long, value_name = "on|off")]
+        full_tunnel: Option<String>,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -104,6 +127,18 @@ pub struct InitArgs {
     /// Comma-separated DNS listen addresses (IP:port). Default: <address>:53.
     #[arg(long)]
     pub dns_listen: Option<String>,
+
+    /// IPv6 unique-local /64 for the tunnel (default: a random fd00::/8 subnet).
+    #[arg(long, conflicts_with = "no_ipv6")]
+    pub v6_subnet: Option<String>,
+
+    /// Do not configure IPv6 in the tunnel.
+    #[arg(long)]
+    pub no_ipv6: bool,
+
+    /// Route all client traffic through the server (NAT full tunnel).
+    #[arg(long)]
+    pub full_tunnel: bool,
 }
 
 #[derive(Debug, Subcommand)]

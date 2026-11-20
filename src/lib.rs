@@ -11,6 +11,7 @@ pub mod dns;
 pub mod ip;
 pub mod keys;
 pub mod model;
+pub mod nat;
 pub mod peer_config;
 pub mod runtime;
 pub mod util;

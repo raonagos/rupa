@@ -27,6 +27,10 @@ pub fn run(db_path: &Path, json_output: bool) -> Result<()> {
                 "interface": &server.interface,
                 "address": server.address.to_string(),
                 "subnet": server.subnet.to_string(),
+                "v6_address": server.v6_address.map(|address| address.to_string()),
+                "v6_subnet": server.v6_subnet.map(|subnet| subnet.to_string()),
+                "tunnel": server.tunnel_mode(),
+                "full_tunnel": server.full_tunnel,
                 "listen_port": server.listen_port,
                 "endpoint": server.endpoint.as_deref(),
                 "mtu": server.mtu,
@@ -47,6 +51,13 @@ pub fn run(db_path: &Path, json_output: bool) -> Result<()> {
         server.address,
         server.subnet.prefix_len()
     );
+    if let (Some(v6_address), Some(v6_subnet)) = (server.v6_address, server.v6_subnet) {
+        println!(
+            "  ipv6:       {v6_address}/{} (subnet {v6_subnet})",
+            v6_subnet.prefix_len()
+        );
+    }
+    println!("  tunnel:     {}", server.tunnel_mode());
     println!("  udp:        :{}", server.listen_port);
     println!(
         "  endpoint:   {}",

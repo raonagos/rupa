@@ -1,7 +1,7 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use anyhow::{bail, Context, Result};
-use ipnet::Ipv4Net;
+use ipnet::{Ipv4Net, Ipv6Net};
 
 use crate::keys;
 
@@ -14,6 +14,9 @@ pub struct Server {
     pub listen_port: u16,
     pub address: Ipv4Addr,
     pub subnet: Ipv4Net,
+    pub v6_subnet: Option<Ipv6Net>,
+    pub v6_address: Option<Ipv6Addr>,
+    pub full_tunnel: bool,
     pub mtu: u16,
     pub endpoint: Option<String>,
     pub interface: String,
@@ -30,6 +33,21 @@ impl Server {
 
     pub fn public_key_b64(&self) -> Result<String> {
         key_b64(&self.public_key)
+    }
+
+    /// Whether the tunnel carries IPv6.
+    pub fn has_ipv6(&self) -> bool {
+        self.v6_subnet.is_some() && self.v6_address.is_some()
+    }
+
+    /// `full` routes all client traffic through the server, `split` only the
+    /// tunnel subnets.
+    pub fn tunnel_mode(&self) -> &'static str {
+        if self.full_tunnel {
+            "full"
+        } else {
+            "split"
+        }
     }
 
     /// Configured DNS listeners, or `<tunnel address>:53` by default.
@@ -54,6 +72,7 @@ pub struct Peer {
     pub private_key: Vec<u8>,
     pub public_key: Vec<u8>,
     pub address: Ipv4Addr,
+    pub v6_address: Option<Ipv6Addr>,
     pub created_at: String,
     pub enabled: bool,
 }

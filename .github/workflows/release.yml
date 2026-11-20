@@ -1,14 +1,14 @@
-name: Release artifact
+name: Release
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -20,12 +20,18 @@ jobs:
       - name: Build
         run: cargo build --release --locked
 
-      - name: Checksum
-        run: cd target/release && sha256sum rupa > rupa.sha256
+      - name: Package
+        run: |
+          packaging/build-deb.sh
+          cp target/release/rupa dist/rupa
+          (cd dist && sha256sum rupa rupa_*_*.deb > SHA256SUMS)
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rupa-x86_64-linux
-          path: |
-            target/release/rupa
-            target/release/rupa.sha256
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "rupa $GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/rupa dist/SHA256SUMS dist/rupa_*_*.deb

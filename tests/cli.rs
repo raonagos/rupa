@@ -330,3 +330,151 @@ fn import_refuses_peer_managed_names() {
         .failure()
         .stderr(predicate::str::contains("managed by a peer"));
 }
+
+#[test]
+fn init_creates_a_random_ipv6_ula_by_default() {
+    let dir = TempDir::new().unwrap();
+    init(&dir);
+
+    let status = json_output(&dir, &["status", "--json"]);
+    let address = status["server"]["v6_address"].as_str().expect("v6 address");
+    assert!(address.starts_with("fd"), "unexpected ULA {address}");
+    let subnet = status["server"]["v6_subnet"].as_str().expect("v6 subnet");
+    assert!(subnet.starts_with("fd"));
+    assert!(subnet.ends_with("/64"));
+    assert_eq!(status["server"]["tunnel"], "split");
+
+    rupa(&dir)
+        .args(["peer", "add", "alice"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(", {address}")))
+        .stdout(predicate::str::contains("::2/64"));
+}
+
+#[test]
+fn no_ipv6_keeps_the_v4_only_split_config() {
+    let dir = TempDir::new().unwrap();
+    rupa(&dir)
+        .args(["init", "--endpoint", "vpn.example.com", "--no-ipv6"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ipv6:       disabled"))
+        .stdout(predicate::str::contains("tunnel:     split"));
+
+    rupa(&dir)
+        .args(["peer", "add", "alice"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Address = 10.8.0.2/24\n"))
+        .stdout(predicate::str::contains("DNS = 10.8.0.1\n"))
+        .stdout(predicate::str::contains("AllowedIPs = 10.8.0.0/24\n"));
+
+    let status = json_output(&dir, &["status", "--json"]);
+    assert!(status["server"]["v6_address"].is_null());
+    assert!(status["server"]["v6_subnet"].is_null());
+    assert_eq!(status["server"]["tunnel"], "split");
+}
+
+#[test]
+fn explicit_ipv6_subnet_assigns_peer_addresses() {
+    let dir = TempDir::new().unwrap();
+    rupa(&dir)
+        .args([
+            "init",
+            "--endpoint",
+            "vpn.example.com",
+            "--v6-subnet",
+            "fd12:3456:789a::/64",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ipv6:       fd12:3456:789a::1/64"))
+        .stdout(predicate::str::contains("subnet fd12:3456:789a::/64"));
+
+    rupa(&dir)
+        .args(["peer", "add", "alice"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Address = 10.8.0.2/24, fd12:3456:789a::2/64",
+        ))
+        .stdout(predicate::str::contains(
+            "DNS = 10.8.0.1, fd12:3456:789a::1",
+        ))
+        .stdout(predicate::str::contains(
+            "AllowedIPs = 10.8.0.0/24, fd12:3456:789a::/64",
+        ));
+
+    rupa(&dir)
+        .args(["peer", "add", "bob"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Address = 10.8.0.3/24, fd12:3456:789a::3/64",
+        ));
+
+    let status = json_output(&dir, &["status", "--json"]);
+    assert_eq!(status["server"]["v6_address"], "fd12:3456:789a::1");
+    assert_eq!(status["server"]["v6_subnet"], "fd12:3456:789a::/64");
+}
+
+#[test]
+fn full_tunnel_nats_all_client_traffic() {
+    let dir = TempDir::new().unwrap();
+    rupa(&dir)
+        .args([
+            "init",
+            "--endpoint",
+            "vpn.example.com",
+            "--full-tunnel",
+            "--v6-subnet",
+            "fd12:3456:789a::/64",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("tunnel:     full"))
+        .stdout(predicate::str::contains("Full tunnel"));
+
+    rupa(&dir)
+        .args(["peer", "add", "alice"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Address = 10.8.0.2/24, fd12:3456:789a::2/64",
+        ))
+        .stdout(predicate::str::contains("AllowedIPs = 0.0.0.0/0, ::/0"));
+
+    let status = json_output(&dir, &["status", "--json"]);
+    assert_eq!(status["server"]["tunnel"], "full");
+    assert_eq!(status["server"]["full_tunnel"], true);
+}
+
+#[test]
+fn init_rejects_non_ula_or_non_slash_64_ipv6_subnets() {
+    let dir = TempDir::new().unwrap();
+    rupa(&dir)
+        .args([
+            "init",
+            "--endpoint",
+            "vpn.example.com",
+            "--v6-subnet",
+            "2001:db8::/64",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("fd00::/8"));
+
+    let dir = TempDir::new().unwrap();
+    rupa(&dir)
+        .args([
+            "init",
+            "--endpoint",
+            "vpn.example.com",
+            "--v6-subnet",
+            "fd12:3456:789a::/48",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("/64"));
+}

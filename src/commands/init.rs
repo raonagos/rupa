@@ -16,6 +16,16 @@ pub fn run(db_path: &Path, args: InitArgs) -> Result<()> {
     };
     ip::validate_server_address(address, &subnet)?;
 
+    let v6_subnet = if args.no_ipv6 {
+        None
+    } else {
+        Some(match args.v6_subnet.as_deref() {
+            Some(value) => ip::parse_v6_subnet(value)?,
+            None => ip::random_ula()?,
+        })
+    };
+    let v6_address = v6_subnet.map(|net| ip::default_v6_address(&net));
+
     let endpoint = match args.endpoint.as_deref() {
         Some(value) => util::validate_endpoint(value)?,
         None => util::detect_endpoint()?,
@@ -52,6 +62,9 @@ pub fn run(db_path: &Path, args: InitArgs) -> Result<()> {
         listen_port: args.port,
         address,
         subnet,
+        v6_subnet,
+        v6_address,
+        full_tunnel: args.full_tunnel,
         mtu: args.mtu,
         endpoint,
         interface: interface.clone(),
@@ -72,12 +85,29 @@ pub fn run(db_path: &Path, args: InitArgs) -> Result<()> {
     println!("Created {}", db_path.display());
     println!("Server {} ({interface})", server.name);
     println!("  address:    {address}/{}", subnet.prefix_len());
+    match (v6_address, v6_subnet) {
+        (Some(v6_address), Some(v6_subnet)) => println!(
+            "  ipv6:       {v6_address}/{} (subnet {v6_subnet})",
+            v6_subnet.prefix_len()
+        ),
+        _ => println!("  ipv6:       disabled"),
+    }
+    println!(
+        "  tunnel:     {}",
+        if args.full_tunnel { "full" } else { "split" }
+    );
     println!("  udp:        :{}", args.port);
     println!("  endpoint:   {}", server.endpoint);
     println!("  public key: {}", keys::encode(&pair.public));
     match dns_zone {
         Some(zone) => println!("  DNS:        {dns_display} (zone {zone})"),
         None => println!("  DNS:        {dns_display} (no authoritative zone)"),
+    }
+    if args.full_tunnel {
+        println!();
+        println!(
+            "Full tunnel: the server will NAT the tunnel; forwarding and firewall rules are configured on `rupa up`."
+        );
     }
     println!();
     println!("Next:");

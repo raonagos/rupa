@@ -1,6 +1,6 @@
 [package]
 name = "rupa"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.89"
 description = "WireGuard VPN server and private DNS, configured in SQLite"
@@ -23,20 +23,14 @@ rusqlite = { version = "0.43", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros", "sync", "io-util", "signal"] }
-wireguard = { git = "https://github.com/conduition/wireguard-rs", rev = "dfe5aeffa898ccecefd77e15519bec1b56c33278" }
+# tetuaoro/wireguard-rs carries the "release of an id that is already gone"
+# fix (PR conduition/wireguard-rs#1). Point back at conduition once it lands.
+wireguard = { git = "https://github.com/tetuaoro/wireguard-rs", rev = "c24699b1201f294798acda691820a14a3bcc4b9a" }
 
 [dev-dependencies]
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
-
-# wireguard-rs is pinned to a commit, so it cannot simply be bumped: the
-# vendored copy (vendor/wireguard-rs, see vendor/README.md) carries one local
-# fix — `Device::release` no longer panics when a handshake id is released
-# twice, which used to kill one handshake worker per occurrence and eventually
-# left the tunnel unable to handshake at all.
-[patch."https://github.com/conduition/wireguard-rs"]
-wireguard = { path = "vendor/wireguard-rs" }
 
 [profile.release]
 lto = "thin"

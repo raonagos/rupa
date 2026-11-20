@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -150,6 +150,22 @@ async fn forwards_unknown_names_to_the_upstream() {
     assert_eq!(response.answers.len(), 1);
     match &response.answers[0].data {
         RData::A(a) => assert_eq!(a.0, Ipv4Addr::new(203, 0, 113, 5)),
+        other => panic!("unexpected record {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn answers_aaaa_with_the_server_ipv6_address() {
+    let mut table = table_with_records();
+    let server_v6: Ipv6Addr = "fd12:3456:789a::1".parse().unwrap();
+    table.set_server_v6(Some(server_v6));
+    let address = start_server(table).await;
+
+    let response = udp_exchange(address, "site1.internal.example.com.", RecordType::AAAA).await;
+    assert_eq!(response.metadata.response_code, ResponseCode::NoError);
+    assert_eq!(response.answers.len(), 1);
+    match &response.answers[0].data {
+        RData::AAAA(record) => assert_eq!(record.0, server_v6),
         other => panic!("unexpected record {other:?}"),
     }
 }

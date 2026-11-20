@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 use std::fs;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use ipnet::Ipv4Net;
+use ipnet::{Ipv4Net, Ipv6Net};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::model::{DnsRecord, DnsSource, Peer, PeerWithDns, Server};
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 pub const SCHEMA_V1: &str = r#"
 CREATE TABLE servers (
@@ -61,6 +61,14 @@ CREATE UNIQUE INDEX dns_records_peer_id
 CREATE INDEX dns_records_address ON dns_records (server_id, address);
 "#;
 
+/// v2 adds optional IPv6 tunnel addressing and full-tunnel routing.
+pub const SCHEMA_V2: &str = r#"
+ALTER TABLE servers ADD COLUMN v6_subnet TEXT;
+ALTER TABLE servers ADD COLUMN v6_address TEXT;
+ALTER TABLE servers ADD COLUMN full_tunnel INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peers ADD COLUMN v6_address TEXT;
+"#;
+
 pub struct NewServer {
     pub name: String,
     pub private_key: [u8; 32],
@@ -68,6 +76,9 @@ pub struct NewServer {
     pub listen_port: u16,
     pub address: Ipv4Addr,
     pub subnet: Ipv4Net,
+    pub v6_subnet: Option<Ipv6Net>,
+    pub v6_address: Option<Ipv6Addr>,
+    pub full_tunnel: bool,
     pub mtu: u16,
     pub endpoint: String,
     pub interface: String,
@@ -101,12 +112,12 @@ pub fn create(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-/// Open an initialized database.
+/// Open an initialized database, upgrading an older schema in place.
 pub fn open(path: &Path) -> Result<Connection> {
     if !path.exists() {
         bail!("database not found: {} (run `rupa init`)", path.display());
     }
-    let conn =
+    let mut conn =
         Connection::open(path).with_context(|| format!("failed to open {}", path.display()))?;
     configure(&conn)?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -116,11 +127,19 @@ pub fn open(path: &Path) -> Result<Connection> {
             path.display()
         );
     }
-    if version != SCHEMA_VERSION {
+    if version > SCHEMA_VERSION {
         bail!(
-            "database {} has schema v{version}, this rupa expects v{SCHEMA_VERSION}",
+            "database {} has schema v{version}, this rupa expects v{SCHEMA_VERSION} or older",
             path.display()
         );
+    }
+    if version < SCHEMA_VERSION {
+        migrate(&mut conn).with_context(|| {
+            format!(
+                "failed to upgrade database {} from schema v{version} to v{SCHEMA_VERSION}",
+                path.display()
+            )
+        })?;
     }
     Ok(conn)
 }
@@ -131,6 +150,14 @@ pub fn migrate(conn: &mut Connection) -> Result<()> {
         0 => {
             let tx = conn.transaction()?;
             tx.execute_batch(SCHEMA_V1)?;
+            tx.execute_batch(SCHEMA_V2)?;
+            tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            tx.commit()?;
+            Ok(())
+        }
+        1 => {
+            let tx = conn.transaction()?;
+            tx.execute_batch(SCHEMA_V2)?;
             tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             tx.commit()?;
             Ok(())
@@ -163,11 +190,14 @@ fn set_mode(path: &Path, mode: u32) -> Result<()> {
 }
 
 pub fn insert_server(conn: &Connection, server: &NewServer) -> Result<i64> {
+    let v6_subnet = server.v6_subnet.map(|net| net.to_string());
+    let v6_address = server.v6_address.map(|address| address.to_string());
     conn.execute(
         "INSERT INTO servers
            (name, private_key, public_key, listen_port, address, subnet, mtu,
-            endpoint, interface, dns_zone, dns_upstreams, dns_listen, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            endpoint, interface, dns_zone, dns_upstreams, dns_listen, created_at,
+            v6_subnet, v6_address, full_tunnel)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             &server.name,
             server.private_key.as_slice(),
@@ -182,6 +212,9 @@ pub fn insert_server(conn: &Connection, server: &NewServer) -> Result<i64> {
             &server.dns_upstreams,
             server.dns_listen.as_deref(),
             &server.created_at,
+            v6_subnet.as_deref(),
+            v6_address.as_deref(),
+            i64::from(server.full_tunnel),
         ],
     )
     .context("failed to insert the server row")?;
@@ -193,7 +226,7 @@ pub fn load_server(conn: &Connection) -> Result<Server> {
         .query_row(
             "SELECT id, name, private_key, public_key, listen_port, address,
                     subnet, mtu, endpoint, interface, dns_zone, dns_upstreams,
-                    dns_listen, created_at
+                    dns_listen, created_at, v6_subnet, v6_address, full_tunnel
              FROM servers ORDER BY id LIMIT 1",
             [],
             |row| {
@@ -212,6 +245,9 @@ pub fn load_server(conn: &Connection) -> Result<Server> {
                     dns_upstreams: row.get(11)?,
                     dns_listen: row.get(12)?,
                     created_at: row.get(13)?,
+                    v6_subnet: row.get(14)?,
+                    v6_address: row.get(15)?,
+                    full_tunnel: row.get(16)?,
                 })
             },
         )
@@ -227,6 +263,85 @@ pub fn used_addresses(conn: &Connection, server_id: i64) -> Result<HashSet<Ipv4A
     for row in rows {
         let value = row?;
         if let Ok(address) = value.parse::<Ipv4Addr>() {
+            used.insert(address);
+        }
+    }
+    Ok(used)
+}
+
+/// Rewrite the tunnel network settings of a server.
+///
+/// `v6` is `Some(None)` to drop IPv6, `Some(Some(net))` to set it (peer
+/// addresses are reallocated from ::2), and `None` to leave it alone.
+pub fn update_network(
+    conn: &mut Connection,
+    server_id: i64,
+    v6: Option<Option<Ipv6Net>>,
+    full_tunnel: Option<bool>,
+) -> Result<()> {
+    let tx = conn.transaction()?;
+
+    if let Some(v6) = v6 {
+        match v6 {
+            Some(net) => {
+                let address = crate::ip::default_v6_address(&net);
+                tx.execute(
+                    "UPDATE servers SET v6_subnet = ?1, v6_address = ?2 WHERE id = ?3",
+                    params![net.to_string(), address.to_string(), server_id],
+                )?;
+
+                let mut ids = Vec::new();
+                {
+                    let mut stmt =
+                        tx.prepare("SELECT id FROM peers WHERE server_id = ?1 ORDER BY id")?;
+                    let rows = stmt.query_map([server_id], |row| row.get::<_, i64>(0))?;
+                    for row in rows {
+                        ids.push(row?);
+                    }
+                }
+                let mut used: HashSet<Ipv6Addr> = HashSet::new();
+                used.insert(address);
+                for id in ids {
+                    let peer_address = crate::ip::allocate_v6(&net, address, &used)?;
+                    used.insert(peer_address);
+                    tx.execute(
+                        "UPDATE peers SET v6_address = ?1 WHERE id = ?2",
+                        params![peer_address.to_string(), id],
+                    )?;
+                }
+            }
+            None => {
+                tx.execute(
+                    "UPDATE servers SET v6_subnet = NULL, v6_address = NULL WHERE id = ?1",
+                    params![server_id],
+                )?;
+                tx.execute(
+                    "UPDATE peers SET v6_address = NULL WHERE server_id = ?1",
+                    params![server_id],
+                )?;
+            }
+        }
+    }
+
+    if let Some(full_tunnel) = full_tunnel {
+        tx.execute(
+            "UPDATE servers SET full_tunnel = ?1 WHERE id = ?2",
+            params![i64::from(full_tunnel), server_id],
+        )?;
+    }
+
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn used_v6_addresses(conn: &Connection, server_id: i64) -> Result<HashSet<Ipv6Addr>> {
+    let mut stmt = conn
+        .prepare("SELECT v6_address FROM peers WHERE server_id = ?1 AND v6_address IS NOT NULL")?;
+    let rows = stmt.query_map([server_id], |row| row.get::<_, String>(0))?;
+    let mut used = HashSet::new();
+    for row in rows {
+        let value = row?;
+        if let Ok(address) = value.parse::<Ipv6Addr>() {
             used.insert(address);
         }
     }
@@ -252,12 +367,14 @@ pub fn insert_peer(
     private_key: &[u8; 32],
     public_key: &[u8; 32],
     address: Ipv4Addr,
+    v6_address: Option<Ipv6Addr>,
     created_at: &str,
 ) -> Result<i64> {
+    let v6_address = v6_address.map(|address| address.to_string());
     conn.execute(
         "INSERT INTO peers
-           (server_id, name, private_key, public_key, address, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           (server_id, name, private_key, public_key, address, created_at, v6_address)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             server_id,
             name,
@@ -265,6 +382,7 @@ pub fn insert_peer(
             public_key.as_slice(),
             address.to_string(),
             created_at,
+            v6_address.as_deref(),
         ],
     )
     .context("failed to insert the peer")?;
@@ -275,7 +393,7 @@ pub fn find_peer(conn: &Connection, server_id: i64, name: &str) -> Result<Option
     let raw = conn
         .query_row(
             "SELECT id, server_id, name, private_key, public_key, address,
-                    created_at, enabled
+                    created_at, enabled, v6_address
              FROM peers WHERE server_id = ?1 AND name = ?2",
             params![server_id, name],
             |row| {
@@ -288,6 +406,7 @@ pub fn find_peer(conn: &Connection, server_id: i64, name: &str) -> Result<Option
                     address: row.get(5)?,
                     created_at: row.get(6)?,
                     enabled: row.get(7)?,
+                    v6_address: row.get(8)?,
                 })
             },
         )
@@ -298,7 +417,7 @@ pub fn find_peer(conn: &Connection, server_id: i64, name: &str) -> Result<Option
 pub fn list_peers(conn: &Connection, server_id: i64) -> Result<Vec<PeerWithDns>> {
     let mut stmt = conn.prepare(
         "SELECT p.id, p.server_id, p.name, p.private_key, p.public_key,
-                p.address, p.created_at, p.enabled, d.name
+                p.address, p.created_at, p.enabled, d.name, p.v6_address
          FROM peers p
          LEFT JOIN dns_records d ON d.peer_id = p.id
          WHERE p.server_id = ?1",
@@ -314,6 +433,7 @@ pub fn list_peers(conn: &Connection, server_id: i64) -> Result<Vec<PeerWithDns>>
                 address: row.get(5)?,
                 created_at: row.get(6)?,
                 enabled: row.get(7)?,
+                v6_address: row.get(9)?,
             },
             dns_name: row.get(8)?,
         })
@@ -439,6 +559,9 @@ struct RawServer {
     dns_upstreams: String,
     dns_listen: Option<String>,
     created_at: String,
+    v6_subnet: Option<String>,
+    v6_address: Option<String>,
+    full_tunnel: i64,
 }
 
 impl RawServer {
@@ -451,6 +574,24 @@ impl RawServer {
             .subnet
             .parse()
             .with_context(|| format!("invalid server subnet '{}'", self.subnet))?;
+        let v6_subnet = self
+            .v6_subnet
+            .as_deref()
+            .map(|value| {
+                value
+                    .parse::<Ipv6Net>()
+                    .with_context(|| format!("invalid server IPv6 subnet '{value}'"))
+            })
+            .transpose()?;
+        let v6_address = self
+            .v6_address
+            .as_deref()
+            .map(|value| {
+                value
+                    .parse::<Ipv6Addr>()
+                    .with_context(|| format!("invalid server IPv6 address '{value}'"))
+            })
+            .transpose()?;
         if !(1..=65535).contains(&self.listen_port) {
             bail!("invalid listen port {}", self.listen_port);
         }
@@ -465,6 +606,9 @@ impl RawServer {
             listen_port: self.listen_port as u16,
             address,
             subnet,
+            v6_subnet,
+            v6_address,
+            full_tunnel: self.full_tunnel != 0,
             mtu: self.mtu as u16,
             endpoint: self.endpoint,
             interface: self.interface,
@@ -485,6 +629,7 @@ struct RawPeer {
     address: String,
     created_at: String,
     enabled: i64,
+    v6_address: Option<String>,
 }
 
 impl RawPeer {
@@ -493,6 +638,15 @@ impl RawPeer {
             .address
             .parse()
             .with_context(|| format!("invalid peer address '{}'", self.address))?;
+        let v6_address = self
+            .v6_address
+            .as_deref()
+            .map(|value| {
+                value
+                    .parse::<Ipv6Addr>()
+                    .with_context(|| format!("invalid peer IPv6 address '{value}'"))
+            })
+            .transpose()?;
         Ok(Peer {
             id: self.id,
             server_id: self.server_id,
@@ -500,6 +654,7 @@ impl RawPeer {
             private_key: self.private_key,
             public_key: self.public_key,
             address,
+            v6_address,
             created_at: self.created_at,
             enabled: self.enabled != 0,
         })
@@ -556,6 +711,9 @@ mod tests {
             listen_port: 51820,
             address: "10.8.0.1".parse().unwrap(),
             subnet: "10.8.0.0/24".parse().unwrap(),
+            v6_subnet: None,
+            v6_address: None,
+            full_tunnel: false,
             mtu: 1420,
             endpoint: "vpn.example.com".into(),
             interface: "rupa0".into(),
@@ -580,6 +738,114 @@ mod tests {
         assert_eq!(loaded.address, "10.8.0.1".parse::<Ipv4Addr>().unwrap());
         assert_eq!(loaded.subnet.to_string(), "10.8.0.0/24");
         assert_eq!(loaded.dns_listen_addrs(), vec!["10.8.0.1:53"]);
+        assert!(loaded.v6_subnet.is_none());
+        assert!(loaded.v6_address.is_none());
+        assert!(!loaded.full_tunnel);
+    }
+
+    #[test]
+    fn stores_ipv6_addressing_and_full_tunnel() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rupa.db");
+        let conn = create(&path).unwrap();
+
+        let mut new_server = server();
+        new_server.v6_subnet = Some("fd12:3456:789a::/64".parse().unwrap());
+        new_server.v6_address = Some("fd12:3456:789a::1".parse().unwrap());
+        new_server.full_tunnel = true;
+        let server_id = insert_server(&conn, &new_server).unwrap();
+
+        let loaded = load_server(&conn).unwrap();
+        assert_eq!(loaded.v6_subnet.unwrap().to_string(), "fd12:3456:789a::/64");
+        assert_eq!(
+            loaded.v6_address.unwrap(),
+            "fd12:3456:789a::1".parse::<Ipv6Addr>().unwrap()
+        );
+        assert!(loaded.full_tunnel);
+        assert!(loaded.has_ipv6());
+        assert_eq!(loaded.tunnel_mode(), "full");
+
+        insert_peer(
+            &conn,
+            server_id,
+            "alice",
+            &[2u8; 32],
+            &[3u8; 32],
+            "10.8.0.2".parse().unwrap(),
+            Some("fd12:3456:789a::2".parse().unwrap()),
+            &now_rfc3339(),
+        )
+        .unwrap();
+
+        let peer = find_peer(&conn, server_id, "alice").unwrap().unwrap();
+        assert_eq!(
+            peer.v6_address.unwrap(),
+            "fd12:3456:789a::2".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(
+            used_v6_addresses(&conn, server_id)
+                .unwrap()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec!["fd12:3456:789a::2".parse::<Ipv6Addr>().unwrap()]
+        );
+    }
+
+    #[test]
+    fn opens_and_upgrades_a_v1_database_in_place() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("rupa.db");
+
+        // Build a genuine v1 database, as written by rupa 0.1/0.2 before v2.
+        let old = Connection::open(&path).unwrap();
+        old.execute_batch(SCHEMA_V1).unwrap();
+        old.pragma_update(None, "user_version", 1).unwrap();
+        old.execute(
+            "INSERT INTO servers
+               (name, private_key, public_key, listen_port, address, subnet, mtu,
+                endpoint, interface, dns_zone, dns_upstreams, dns_listen, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                "legacy",
+                [1u8; 32].as_slice(),
+                [2u8; 32].as_slice(),
+                51820i64,
+                "10.8.0.1",
+                "10.8.0.0/24",
+                1420i64,
+                "vpn.example.com",
+                "rupa0",
+                Option::<String>::None,
+                "1.1.1.1",
+                Option::<String>::None,
+                now_rfc3339(),
+            ],
+        )
+        .unwrap();
+        old.execute(
+            "INSERT INTO peers
+               (server_id, name, private_key, public_key, address, created_at)
+             VALUES (1, 'alice', ?1, ?2, '10.8.0.2', ?3)",
+            params![[2u8; 32].as_slice(), [3u8; 32].as_slice(), now_rfc3339()],
+        )
+        .unwrap();
+        drop(old);
+
+        let conn = open(&path).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+
+        let loaded = load_server(&conn).unwrap();
+        assert_eq!(loaded.name, "legacy");
+        assert!(loaded.v6_subnet.is_none());
+        assert!(loaded.v6_address.is_none());
+        assert!(!loaded.full_tunnel);
+
+        let peers = list_peers(&conn, loaded.id).unwrap();
+        assert_eq!(peers.len(), 1);
+        assert!(peers[0].peer.v6_address.is_none());
     }
 
     #[test]
@@ -595,6 +861,7 @@ mod tests {
             &[2u8; 32],
             &[3u8; 32],
             "10.8.0.2".parse().unwrap(),
+            None,
             &now_rfc3339(),
         )
         .unwrap();

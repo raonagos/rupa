@@ -119,6 +119,55 @@ pub fn run(db_path: &Path) -> Result<()> {
                         }
                     }
 
+                    if let Some(v6_address) = server.v6_address {
+                        if has_ip {
+                            let configured = Command::new("ip")
+                                .args(["-6", "addr", "show", "dev", &server.interface])
+                                .output()
+                                .map(|output| {
+                                    output.status.success()
+                                        && String::from_utf8_lossy(&output.stdout)
+                                            .contains(&format!("inet6 {v6_address}"))
+                                })
+                                .unwrap_or(false);
+                            if configured {
+                                ok(&format!(
+                                    "interface {} has IPv6 {v6_address}",
+                                    server.interface
+                                ));
+                            } else if running {
+                                fail(&format!(
+                                    "interface {} is missing IPv6 {v6_address}",
+                                    server.interface
+                                ));
+                                failed = true;
+                            } else {
+                                warn(&format!(
+                                    "IPv6 {v6_address} is not on {} (server not running)",
+                                    server.interface
+                                ));
+                            }
+                        }
+                    }
+
+                    if server.full_tunnel {
+                        match std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward") {
+                            Ok(value) if value.trim() == "1" => {
+                                ok("full tunnel: net.ipv4.ip_forward is 1")
+                            }
+                            Ok(value) => {
+                                fail(&format!(
+                                    "full tunnel: net.ipv4.ip_forward is {} (expected 1)",
+                                    value.trim()
+                                ));
+                                failed = true;
+                            }
+                            Err(err) => warn(&format!(
+                                "full tunnel: cannot read net.ipv4.ip_forward: {err}"
+                            )),
+                        }
+                    }
+
                     ok(&format!(
                         "DNS listeners: {}",
                         server.dns_listen_addrs().join(", ")

@@ -34,6 +34,13 @@ fn add(db_path: &Path, args: PeerAddArgs) -> Result<()> {
 
     let used = db::used_addresses(&conn, server.id)?;
     let address = ip::allocate(&server.subnet, server.address, &used)?;
+    let v6_address = match (server.v6_subnet, server.v6_address) {
+        (Some(subnet), Some(server_address)) => {
+            let used_v6 = db::used_v6_addresses(&conn, server.id)?;
+            Some(ip::allocate_v6(&subnet, server_address, &used_v6)?)
+        }
+        _ => None,
+    };
     let pair = keys::generate()?;
     let dns_name = match args.dns.as_deref() {
         Some(value) => Some(resolve_dns_name(&server, value)?),
@@ -57,6 +64,7 @@ fn add(db_path: &Path, args: PeerAddArgs) -> Result<()> {
         &pair.private,
         &pair.public,
         address,
+        v6_address,
         &created_at,
     )?;
     if let Some(dns) = &dns_name {

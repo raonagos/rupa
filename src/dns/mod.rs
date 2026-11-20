@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use hickory_proto::op::{Message, MessageType, Query, ResponseCode};
-use hickory_proto::rr::rdata::{A, PTR, SOA};
+use hickory_proto::rr::rdata::{A, AAAA, PTR, SOA};
 use hickory_proto::rr::{Name, RData, Record, RecordType};
 use rusqlite::Connection;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -29,6 +29,7 @@ pub struct DnsTable {
     pub zone: Option<String>,
     pub ttl: u32,
     pub upstreams: Vec<SocketAddr>,
+    server_v6: Option<Ipv6Addr>,
     records: HashMap<String, Ipv4Addr>,
     ptr: HashMap<Ipv4Addr, String>,
 }
@@ -39,6 +40,7 @@ impl DnsTable {
             zone: zone.map(|value| normalize_name(&value)),
             ttl,
             upstreams,
+            server_v6: None,
             records: HashMap::new(),
             ptr: HashMap::new(),
         }
@@ -50,10 +52,16 @@ impl DnsTable {
             DEFAULT_TTL,
             parse_upstreams(&server.dns_upstreams),
         );
+        table.server_v6 = server.v6_address;
         for record in db::list_dns_records(conn, server.id)? {
             table.insert_record(&record.name, record.address);
         }
         Ok(table)
+    }
+
+    /// The address answered for `AAAA` queries in the private zone.
+    pub fn set_server_v6(&mut self, address: Option<Ipv6Addr>) {
+        self.server_v6 = address;
     }
 
     pub fn insert_record(&mut self, name: &str, address: Ipv4Addr) {
@@ -93,10 +101,9 @@ impl DnsTable {
             },
             RecordType::AAAA => {
                 if in_zone {
-                    if self.records.contains_key(name) {
-                        Resolution::NoData
-                    } else {
-                        Resolution::NxDomain
+                    match self.server_v6 {
+                        Some(address) => Resolution::Aaaa(address),
+                        None => Resolution::NoData,
                     }
                 } else {
                     Resolution::Forward
@@ -125,6 +132,7 @@ impl DnsTable {
 
 enum Resolution {
     A(Ipv4Addr),
+    Aaaa(Ipv6Addr),
     Ptr(String),
     NoData,
     NxDomain,
@@ -325,6 +333,14 @@ fn build_response(
                 RData::A(A(*address)),
             ));
         }
+        Resolution::Aaaa(address) => {
+            response.metadata.authoritative = true;
+            response.answers.push(Record::from_rdata(
+                query.name().clone(),
+                ttl,
+                RData::AAAA(AAAA(*address)),
+            ));
+        }
         Resolution::Ptr(target) => {
             response.metadata.authoritative = true;
             if let Ok(name) = Name::from_ascii(format!("{target}.")) {
@@ -481,5 +497,55 @@ mod tests {
             table.resolve("example.com", RecordType::A),
             Resolution::Forward
         ));
+    }
+
+    #[test]
+    fn answers_aaaa_for_any_name_in_the_private_zone() {
+        let mut table = DnsTable::new(Some("internal.example.com".into()), 60, vec![]);
+        table.insert_record("site1.internal.example.com", "10.8.0.1".parse().unwrap());
+        let server_v6: Ipv6Addr = "fd12:3456:789a::1".parse().unwrap();
+        table.set_server_v6(Some(server_v6));
+
+        assert!(matches!(
+            table.resolve("site1.internal.example.com", RecordType::AAAA),
+            Resolution::Aaaa(address) if address == server_v6
+        ));
+        assert!(matches!(
+            table.resolve("missing.internal.example.com", RecordType::AAAA),
+            Resolution::Aaaa(address) if address == server_v6
+        ));
+        assert!(matches!(
+            table.resolve("internal.example.com", RecordType::AAAA),
+            Resolution::Aaaa(address) if address == server_v6
+        ));
+        assert!(matches!(
+            table.resolve("example.com", RecordType::AAAA),
+            Resolution::Forward
+        ));
+    }
+
+    #[test]
+    fn builds_an_aaaa_response() {
+        let query = Query::query(
+            Name::from_ascii("site1.internal.example.com.").unwrap(),
+            RecordType::AAAA,
+        );
+        let mut message = Message::new(1, MessageType::Query, hickory_proto::op::OpCode::Query);
+        message.queries.push(query.clone());
+        let server_v6: Ipv6Addr = "fd12:3456:789a::1".parse().unwrap();
+
+        let response = build_response(
+            &message,
+            &query,
+            &Resolution::Aaaa(server_v6),
+            Some("internal.example.com"),
+            60,
+        );
+        assert!(response.metadata.authoritative);
+        assert_eq!(response.answers.len(), 1);
+        match &response.answers[0].data {
+            RData::AAAA(record) => assert_eq!(record.0, server_v6),
+            other => panic!("unexpected record {other:?}"),
+        }
     }
 }

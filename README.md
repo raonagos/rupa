@@ -19,7 +19,7 @@ shutdown).
 - [x] `rupa status`, `rupa doctor`, live handshake/transfer counters
 - [x] systemd unit
 
-Not in 0.1.0: web UI, multi-VPS orchestration, IPv6, NAT/full tunnel.
+Not yet: web UI, multi-VPS orchestration.
 
 Rupa is the private-network companion to
 [uping](https://github.com/raonagos/uping): uping serves the private sites on
@@ -88,6 +88,26 @@ sudo rupa dns list
 
 Rupa only resolves names. A private ACME CA (step-ca) still needs its root
 installed on the clients; uping still owns the certificates.
+
+## IPv6 and full tunnel
+
+`rupa init` gives every server a unique-local IPv6 `/64` (random inside
+`fd00::/8`, or `--v6-subnet fd..::/64`; `--no-ipv6` opts out). The server takes
+`::1`, peers get `::2`, `::3`, …, the TUN carries both families and the private
+zone answers `AAAA` with the server address.
+
+`--full-tunnel` routes everything through the server: client configs get
+`AllowedIPs = 0.0.0.0/0, ::/0`, and the daemon enables forwarding and installs
+`MASQUERADE`/`FORWARD` rules on the default-route interface (removed on
+shutdown; a failure is logged and never stops the tunnel from starting).
+
+Both can be changed on an existing database, no re-init:
+
+```sh
+sudo rupa config set --v6-subnet fd12:3456:789a::/64
+sudo rupa config set --full-tunnel on
+sudo systemctl restart rupa          # or: sudo rupa reload (reports what needs it)
+```
 
 ## Private site behind uping
 
