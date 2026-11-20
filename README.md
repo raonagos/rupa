@@ -7,7 +7,7 @@ CLI first.
 
 ## Status
 
-`v0.1.1` — feature-complete and tested end-to-end with a kernel WireGuard
+`v0.2.0` — feature-complete, tested end-to-end with a kernel WireGuard
 client (TUN, handshake, private DNS, HTTP through the tunnel, reload,
 shutdown).
 
@@ -27,27 +27,37 @@ Rupa is the private-network companion to
 
 ## Install
 
-Prebuilt glibc x86_64 binary for v0.1.1:
+Debian/Ubuntu package (recommended):
 
 ```sh
-curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.1/rupa
-curl -LO https://github.com/raonagos/rupa/releases/download/v0.1.1/rupa.sha256
-sha256sum -c rupa.sha256
-sudo install -m 0755 rupa /usr/local/bin/rupa
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.2.0/rupa_0.2.0_amd64.deb
+sudo dpkg -i rupa_0.2.0_amd64.deb
 ```
 
-Or build from source (`cargo build --release`) and install
-`target/release/rupa`. The release binary is built on Ubuntu 22.04 and needs a
-glibc Linux x86_64 system.
+It installs `/usr/bin/rupa` and the unit
+`/usr/lib/systemd/system/rupa.service`, ships `/etc/rupa/rupa.env` as a
+conffile (dpkg keeps your version on upgrade, it never overwrites it), and
+creates `/var/lib/rupa` (0700) for the database. The service is enabled but only
+started once the database exists, so run `rupa init` first.
+
+Or the plain binary, for any glibc x86_64 Linux:
+
+```sh
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.2.0/rupa
+curl -LO https://github.com/raonagos/rupa/releases/download/v0.2.0/SHA256SUMS
+sha256sum -c SHA256SUMS
+sudo install -m 0755 rupa /usr/bin/rupa
+```
+
+Or build from source: `cargo build --release`, then `packaging/build-deb.sh`
+for a package, or install `target/release/rupa` by hand. The release binary is
+built on Ubuntu 22.04 and needs a glibc Linux x86_64 system.
 
 ## Quick start
 
 ```sh
 sudo rupa init --endpoint vpn.example.com --dns-zone internal.example.com
-
-sudo install -m 0644 packaging/rupa.service /etc/systemd/system/rupa.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now rupa
+sudo systemctl start rupa
 
 # Firewall: the UDP port for clients, and the TUN for DNS/uping.
 sudo ufw allow 51820/udp
@@ -56,9 +66,10 @@ sudo ufw allow in on rupa0
 sudo rupa peer add phone --dns phone --qr
 ```
 
-The database is `/var/lib/rupa/rupa.db`; `rupa init` prints the chosen address,
-port, interface and public key. `rupa up` must run as root (TUN, UDP and DNS
-:53); the systemd unit does that.
+The database is `/var/lib/rupa/rupa.db` (override with `--db` or `RUPA_DB`,
+including in `/etc/rupa/rupa.env`); `rupa init` prints the chosen address, port,
+interface and public key. `rupa up` must run as root (TUN, UDP and DNS :53); the
+systemd unit does that.
 
 On the client:
 
